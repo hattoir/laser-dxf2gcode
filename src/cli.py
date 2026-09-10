@@ -96,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         except AttributeError:
             pass
     args = build_parser().parse_args(argv)
+    generates = args.cmd == "convert" or getattr(args, "cal_cmd", None) in ("coupon", "kerf")
     try:
         return args.func(args)
     except WorkAreaError as exc:
@@ -104,5 +105,6 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_AREA
     except Dxf2GcodeError as exc:
         print(f"\n[中止] {exc}", file=sys.stderr)
-        print("G-code は出力していません。", file=sys.stderr)
+        if generates:
+            print("G-code は出力していません。", file=sys.stderr)
         return EXIT_ERROR
