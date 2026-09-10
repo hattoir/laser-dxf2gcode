@@ -65,11 +65,8 @@ def test_exact_boundary_is_allowed():
 
 
 def test_violation_after_kerf_offset_detected():
-    # 穴はカーフで外側に広がる。外形が 0.05mm に接していると、穴ではなく外形の補正で内に入るので OK だが、
-    # 外形 kerf 0 / 穴が境界に接していると補正後に外へ出る → 検出されること
-    outer = rect(0, 0, 50, 50)
-    hole = rect(0.05, 10, 10, 20)
-    plan = plan_toolpaths([Contour(outer, True, "0", "o"), Contour(hole, True, "0", "h")], profile(kerf=0.2))
+    # 外形はカーフ補正で外側(捨て側)へ k/2 広がる。原点に接して描いた部品はパスが X=-0.1 になる → 停止
+    plan = plan_toolpaths([Contour(rect(0, 0, 50, 50), True, "0", "o")], profile(kerf=0.2))
     with pytest.raises(WorkAreaError):
         generate_gcode(plan, machine())
 

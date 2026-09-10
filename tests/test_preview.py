@@ -62,9 +62,18 @@ def test_burns_and_report_numbers():
     assert len(burns) == 4 and [b.role for b in burns] == ["hole", "hole", "outer", "outer"]
     rep = build_report(g.text, parsed, m, plan, {"source": "x"}, [])
     assert "部品数(外形)  : 1" in rep.text and "穴の数        : 1" in rep.text
-    expected = 2 * (4 * 49.8 + 2 * math.pi * 5.1)
+    # 外形 50 角は外へ 0.1(角は R0.1 の円弧)、穴 R5 は内へ 0.1 → R4.9
+    expected = 2 * (4 * 50 + 2 * math.pi * 0.1 + 2 * math.pi * 4.9)
     assert abs(rep.cut_length - expected) / expected < 0.01
-    assert rep.bbox[0] > 50 and rep.bbox[2] < 100
+    assert 49.85 < rep.bbox[0] < 49.95 and 100.05 < rep.bbox[2] < 100.15
+
+
+def test_detail_window_svg():
+    m, plan, g, parsed = job(passes=1)
+    svg = render_svg(g.text, parsed, m, plan, "t", window=(40, 40, 110, 110))
+    root = ET.fromstring(svg)
+    vb = [float(v) for v in root.get("viewBox").split()]
+    assert vb[2] < 120  # 使用範囲 + 余白だけを表示
 
 
 def test_svg_well_formed_and_contains_elements():

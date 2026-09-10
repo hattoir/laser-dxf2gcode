@@ -26,7 +26,9 @@ def _print_outcome(o: Outcome) -> None:
     print(o.report.text)
     print("出力:")
     print(f"  G-code   : {o.gcode_path}")
-    print(f"  プレビュー: {o.svg_path}")
+    print(f"  プレビュー: {o.svg_path}(加工エリア全体での位置)")
+    if o.detail_path:
+        print(f"  拡大図   : {o.detail_path}(切断順の確認)")
     print(f"  レポート : {o.report_path}")
     if o.frame_path:
         print(f"  枠確認用 : {o.frame_path}(レーザー OFF で使用範囲の外周をなぞる)")

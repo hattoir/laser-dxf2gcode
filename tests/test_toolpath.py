@@ -61,28 +61,36 @@ def _radii(poly, cx, cy):
     return [math.hypot(x - cx, y - cy) for x, y in poly]
 
 
-def test_kerf_hole_r10_becomes_r10_1():
-    plan = plan_toolpaths(contours(rect(50, 50, 150, 150), circle(100, 100, 10)), make_profile(kerf=0.2))
+def test_kerf_hole_r10_path_r9_9_finishes_r10():
+    # 穴はビームの中心を穴の内側(捨て側)へ k/2。溝の縁 = パス + k/2 = 設計の R10
+    k = 0.2
+    plan = plan_toolpaths(contours(rect(50, 50, 150, 150), circle(100, 100, 10)), make_profile(kerf=k))
     hole = [p for p in plan.paths if p.role == "hole"][0]
     r = _radii(hole.points[:-1], 100, 100)
-    assert abs(max(r) - 10.1) < 0.005
-    assert abs(sum(r) / len(r) - 10.1) < 0.005
+    assert abs(max(r) - 9.9) < 0.005
+    assert abs(sum(r) / len(r) - 9.9) < 0.005
+    assert abs(sum(r) / len(r) + k / 2 - 10.0) < 0.005   # 仕上がりの穴の半径
 
 
-def test_kerf_outer_shrinks_by_half_kerf():
-    plan = plan_toolpaths(contours(circle(100, 100, 10)), make_profile(kerf=0.2))
+def test_kerf_outer_r10_path_r10_1_finishes_r10():
+    k = 0.2
+    plan = plan_toolpaths(contours(circle(100, 100, 10)), make_profile(kerf=k))
     outer = plan.paths[0]
     assert outer.role == "outer"
     r = _radii(outer.points[:-1], 100, 100)
-    assert abs(sum(r) / len(r) - 9.9) < 0.005
+    assert abs(sum(r) / len(r) - 10.1) < 0.005
+    assert abs(sum(r) / len(r) - k / 2 - 10.0) < 0.005   # 仕上がりの部品の半径
 
 
-def test_kerf_square_outer_keeps_sharp_corners():
+def test_kerf_square_outer_grows_and_part_corner_stays_sharp():
     plan = plan_toolpaths(contours(rect(10, 10, 30, 30)), make_profile(kerf=0.2))
-    xs = [p[0] for p in plan.paths[0].points]
-    ys = [p[1] for p in plan.paths[0].points]
-    assert abs(min(xs) - 10.1) < 1e-3 and abs(max(xs) - 29.9) < 1e-3
-    assert abs(min(ys) - 10.1) < 1e-3 and abs(max(ys) - 29.9) < 1e-3
+    pts = plan.paths[0].points
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    assert abs(min(xs) - 9.9) < 1e-3 and abs(max(xs) - 30.1) < 1e-3
+    assert abs(min(ys) - 9.9) < 1e-3 and abs(max(ys) - 30.1) < 1e-3
+    # 角はパスが半径 k/2 の円弧で回り込む → ビームの縁が角にちょうど接し、部品の角は尖ったまま
+    assert abs(min(dist(p, (10, 10)) for p in pts) - 0.1) < 0.005
 
 
 def test_kerf_zero_leaves_geometry():
@@ -98,9 +106,10 @@ def test_orientation_scrap_on_right():
         assert (area > 0) if p.role == "outer" else (area < 0)
 
 
-def test_feature_smaller_than_kerf_is_error():
+def test_hole_smaller_than_kerf_is_error():
+    # 半径 0.05 の穴は内側へ 0.1 ずらすと消える → 黙って捨てずにエラー
     with pytest.raises(GeometryError):
-        plan_toolpaths(contours(circle(100, 100, 0.05)), make_profile(kerf=0.2))
+        plan_toolpaths(contours(rect(50, 50, 150, 150), circle(100, 100, 0.05)), make_profile(kerf=0.2))
 
 
 def test_engrave_layer_not_compensated():

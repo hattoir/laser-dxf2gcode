@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import bisect
 import html
 import math
 import re
@@ -93,7 +94,6 @@ def split_chains(parsed: ParsedGcode) -> list[list[Motion]]:
     cmd_lines = [no for no, _ in parsed.commands]
     motion_lines = {m.line_no for m in parsed.motions}
     non_motion = sorted(set(cmd_lines) - motion_lines)
-    import bisect
 
     chains: list[list[Motion]] = []
     prev: Motion | None = None
@@ -158,7 +158,6 @@ def extract_burns(parsed: ParsedGcode, text: str) -> list[Burn]:
         if m:
             roles[no] = (int(m.group(1)), m.group(3))
     role_lines = sorted(roles)
-    import bisect
 
     burns: list[Burn] = []
     prev: Motion | None = None
@@ -167,7 +166,7 @@ def extract_burns(parsed: ParsedGcode, text: str) -> list[Burn]:
             prev = m
             continue
         cont = (prev is not None and prev.burning and burns and burns[-1].points[-1] == m.start
-                and not any(prev.line_no < r < m.line_no for r in role_lines))
+                and bisect.bisect_right(role_lines, prev.line_no) == bisect.bisect_right(role_lines, m.line_no))
         if cont:
             burns[-1].points.append(m.end)
         else:
@@ -176,6 +175,13 @@ def extract_burns(parsed: ParsedGcode, text: str) -> list[Burn]:
             burns.append(Burn([m.start, m.end], role, path_no, m.line_no))
         prev = m
     return burns
+
+
+def burns_bbox(burns: Sequence[Burn]) -> tuple[float, float, float, float] | None:
+    pts = [p for b in burns for p in b.points]
+    if not pts:
+        return None
+    return (min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts))
 
 
 # --------------------------------------------------------------------------
@@ -189,54 +195,67 @@ def _color(i: int, n: int) -> str:
 
 
 def render_svg(text: str, parsed: ParsedGcode, machine: Machine, plan: Plan | None = None,
-               title: str = "", info_lines: Sequence[str] = (), warn_lines: Sequence[str] = ()) -> str:
+               title: str = "", info_lines: Sequence[str] = (), warn_lines: Sequence[str] = (),
+               window: tuple[float, float, float, float] | None = None) -> str:
+    """SVG を返す。window=(x0, y0, x1, y1) を与えるとその範囲だけを拡大表示する。
+
+    座標は 1 単位 = 1mm。機械の Y は上向き、SVG は下向きなので Y を反転する。
+    """
     W, H = machine.x_max, machine.y_max
-    margin = 12.0
-    header_h = 8.0 + 5.0 * (len(info_lines) + len(warn_lines))
-    vb_w, vb_h = W + 2 * margin, H + 2 * margin + header_h
+    wx0, wy0, wx1, wy1 = window if window else (0.0, 0.0, W, H)
+    k = max(0.35, max(wx1 - wx0, wy1 - wy0) / max(W, H))  # 文字・余白の倍率
+    m = 12.0 * k
+    header_h = (8.0 + 5.0 * (len(info_lines) + len(warn_lines))) * k
+    vx, vy = wx0 - m, -wy1 - m - header_h
+    vw, vh = (wx1 - wx0) + 2 * m, (wy1 - wy0) + 2 * m + header_h
 
     def X(x: float) -> float:
-        return margin + x
+        return x
 
     def Y(y: float) -> float:
-        return header_h + margin + (H - y)  # 機械の Y は上向き、SVG は下向き
+        return -y
 
     def pts(ps: Sequence[Point]) -> str:
-        return " ".join(f"{X(x):.3f},{Y(y):.3f}" for x, y in ps)
+        return " ".join(f"{x:.3f},{-y:.3f}" for x, y in ps)
 
     o: list[str] = []
     px_w = 1000
-    o.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {vb_w:.1f} {vb_h:.1f}" '
-             f'width="{px_w}" height="{px_w * vb_h / vb_w:.0f}" font-family="sans-serif">')
-    o.append(f'<rect x="0" y="0" width="{vb_w:.1f}" height="{vb_h:.1f}" fill="#ffffff"/>')
+    o.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vx:.2f} {vy:.2f} {vw:.2f} {vh:.2f}" '
+             f'width="{px_w}" height="{px_w * vh / vw:.0f}" font-family="sans-serif">')
+    o.append(f'<rect x="{vx:.2f}" y="{vy:.2f}" width="{vw:.2f}" height="{vh:.2f}" fill="#ffffff"/>')
     # ヘッダ
-    y = 7.0
-    o.append(f'<text x="{margin}" y="{y}" font-size="5" font-weight="bold">{html.escape(title)}</text>')
+    y = vy + 7.0 * k
+    o.append(f'<text x="{wx0:.2f}" y="{y:.2f}" font-size="{5 * k:.2f}" font-weight="bold">{html.escape(title)}</text>')
     for line in info_lines:
-        y += 5.0
-        o.append(f'<text x="{margin}" y="{y}" font-size="3.6" fill="#333">{html.escape(line)}</text>')
+        y += 5.0 * k
+        o.append(f'<text x="{wx0:.2f}" y="{y:.2f}" font-size="{3.6 * k:.2f}" fill="#333">{html.escape(line)}</text>')
     for line in warn_lines:
-        y += 5.0
-        o.append(f'<text x="{margin}" y="{y}" font-size="3.6" fill="#c00000">{html.escape(line)}</text>')
+        y += 5.0 * k
+        o.append(f'<text x="{wx0:.2f}" y="{y:.2f}" font-size="{3.6 * k:.2f}" fill="#c00000">{html.escape(line)}</text>')
 
-    # 加工エリアとグリッド
-    o.append(f'<rect x="{X(0)}" y="{Y(H)}" width="{W}" height="{H}" fill="#fafafa" stroke="#222" stroke-width="0.6"/>')
+    # 加工エリアとグリッド(拡大表示では 10mm 間隔)
+    step = 50 if (wx1 - wx0) > 200 or (wy1 - wy0) > 200 else 10
+    o.append(f'<rect x="0" y="{Y(H)}" width="{W}" height="{H}" fill="#fafafa" stroke="#222" stroke-width="{0.6 * k:.2f}"/>')
     g = []
-    for gx in range(0, int(W) + 1, 50):
-        g.append(f'<line x1="{X(gx)}" y1="{Y(0)}" x2="{X(gx)}" y2="{Y(H)}"/>')
-        o.append(f'<text x="{X(gx)}" y="{Y(0) + 5}" font-size="3" text-anchor="middle" fill="#666">{gx}</text>')
-    for gy in range(0, int(H) + 1, 50):
-        g.append(f'<line x1="{X(0)}" y1="{Y(gy)}" x2="{X(W)}" y2="{Y(gy)}"/>')
-        o.append(f'<text x="{X(0) - 1.5}" y="{Y(gy) + 1}" font-size="3" text-anchor="end" fill="#666">{gy}</text>')
-    o.append('<g stroke="#e4e4e4" stroke-width="0.2">' + "".join(g) + "</g>")
-    o.append(f'<text x="{X(W)}" y="{Y(H) - 1.5}" font-size="3.2" text-anchor="end" fill="#222">'
+    for gx in range(0, int(W) + 1, step):
+        g.append(f'<line x1="{gx}" y1="{Y(0)}" x2="{gx}" y2="{Y(H)}"/>')
+        if wx0 - 1e-9 <= gx <= wx1 + 1e-9:
+            o.append(f'<text x="{gx}" y="{Y(wy0) + m * 0.4:.2f}" font-size="{3 * k:.2f}" text-anchor="middle" '
+                     f'fill="#666">{gx}</text>')
+    for gy in range(0, int(H) + 1, step):
+        g.append(f'<line x1="0" y1="{Y(gy)}" x2="{W}" y2="{Y(gy)}"/>')
+        if wy0 - 1e-9 <= gy <= wy1 + 1e-9:
+            o.append(f'<text x="{wx0 - 1.5 * k:.2f}" y="{Y(gy) + k:.2f}" font-size="{3 * k:.2f}" text-anchor="end" '
+                     f'fill="#666">{gy}</text>')
+    o.append(f'<g stroke="#e4e4e4" stroke-width="{0.2 * k:.2f}">' + "".join(g) + "</g>")
+    o.append(f'<text x="{W}" y="{Y(H) - 1.5 * k:.2f}" font-size="{3.2 * k:.2f}" text-anchor="end" fill="#222">'
              f'加工エリア {W:g} × {H:g} mm</text>')
-    o.append(f'<circle cx="{X(0)}" cy="{Y(0)}" r="1.2" fill="#222"/>'
-             f'<text x="{X(0) + 2}" y="{Y(0) - 2}" font-size="3" fill="#222">原点 (0,0)</text>')
+    o.append(f'<circle cx="0" cy="0" r="{1.2 * k:.2f}" fill="#222"/>'
+             f'<text x="{2 * k:.2f}" y="{-2 * k:.2f}" font-size="{3 * k:.2f}" fill="#222">原点 (0,0)</text>')
 
     # 補正前の輪郭(DXF の形)
     if plan is not None:
-        o.append('<g fill="none" stroke="#9a9a9a" stroke-width="0.12">')
+        o.append(f'<g fill="none" stroke="#9a9a9a" stroke-width="{0.12 * k:.3f}">')
         for p in plan.paths:
             if p.original:
                 tag = "polygon" if p.closed else "polyline"
@@ -244,11 +263,12 @@ def render_svg(text: str, parsed: ParsedGcode, machine: Machine, plan: Plan | No
         o.append("</g>")
 
     # 早送り(G0)
-    o.append('<g stroke="#7a7a7a" stroke-width="0.25" stroke-dasharray="1.6,1.2" opacity="0.75" fill="none">')
-    for m in parsed.motions:
-        if m.kind == "G0" and dist(m.start, m.end) > 1e-6:
-            o.append(f'<line x1="{X(m.start[0]):.3f}" y1="{Y(m.start[1]):.3f}" '
-                     f'x2="{X(m.end[0]):.3f}" y2="{Y(m.end[1]):.3f}"/>')
+    o.append(f'<g stroke="#7a7a7a" stroke-width="{0.25 * k:.3f}" stroke-dasharray="{1.6 * k:.2f},{1.2 * k:.2f}" '
+             'opacity="0.75" fill="none">')
+    for mo in parsed.motions:
+        if mo.kind == "G0" and dist(mo.start, mo.end) > 1e-6:
+            o.append(f'<line x1="{X(mo.start[0]):.3f}" y1="{Y(mo.start[1]):.3f}" '
+                     f'x2="{X(mo.end[0]):.3f}" y2="{Y(mo.end[1]):.3f}"/>')
     o.append("</g>")
 
     # 焼き区間: 同じ輪郭の繰り返し(パス回数)は 1 本にまとめ、番号に ×N を付ける
@@ -262,33 +282,33 @@ def render_svg(text: str, parsed: ParsedGcode, machine: Machine, plan: Plan | No
     o.append('<g fill="none" stroke-linejoin="round" stroke-linecap="round">')
     for i, grp in enumerate(uniq):
         b = grp[0]
-        width = 0.3 if b.role == "mark" else 0.45
-        dash = ' stroke-dasharray="0.8,0.5"' if b.role == "mark" else ""
-        o.append(f'<polyline points="{pts(b.points)}" stroke="{_color(i, n)}" stroke-width="{width}"{dash}/>')
+        width = (0.3 if b.role == "mark" else 0.45) * k
+        dash = f' stroke-dasharray="{0.8 * k:.2f},{0.5 * k:.2f}"' if b.role == "mark" else ""
+        o.append(f'<polyline points="{pts(b.points)}" stroke="{_color(i, n)}" stroke-width="{width:.3f}"{dash}/>')
     o.append("</g>")
     # 開始点と番号
-    o.append('<g font-size="3.2" font-weight="bold" paint-order="stroke" stroke="#fff" stroke-width="0.8">')
+    o.append(f'<g font-size="{3.2 * k:.2f}" font-weight="bold" paint-order="stroke" stroke="#fff" '
+             f'stroke-width="{0.8 * k:.2f}">')
     for i, grp in enumerate(uniq):
         b = grp[0]
         sx, sy = b.points[0]
         label = f"{i + 1}" + (f"×{len(grp)}" if len(grp) > 1 else "")
-        o.append(f'<circle cx="{X(sx):.3f}" cy="{Y(sy):.3f}" r="0.8" fill="{_color(i, n)}" stroke="none"/>')
-        o.append(f'<text x="{X(sx) + 1.2:.3f}" y="{Y(sy) - 1.2:.3f}" fill="{_color(i, n)}">{label}</text>')
+        o.append(f'<circle cx="{X(sx):.3f}" cy="{Y(sy):.3f}" r="{0.8 * k:.2f}" fill="{_color(i, n)}" stroke="none"/>')
+        o.append(f'<text x="{X(sx) + 1.2 * k:.3f}" y="{Y(sy) - 1.2 * k:.3f}" fill="{_color(i, n)}">{label}</text>')
     o.append("</g>")
 
     # 材料の使用範囲
-    all_pts = [p for b in burns for p in b.points]
-    if all_pts:
-        x0 = min(p[0] for p in all_pts); x1 = max(p[0] for p in all_pts)
-        y0 = min(p[1] for p in all_pts); y1 = max(p[1] for p in all_pts)
+    bb = burns_bbox(burns)
+    if bb:
+        x0, y0, x1, y1 = bb
         o.append(f'<rect x="{X(x0):.3f}" y="{Y(y1):.3f}" width="{x1 - x0:.3f}" height="{y1 - y0:.3f}" '
-                 f'fill="none" stroke="#e08000" stroke-width="0.3" stroke-dasharray="3,1.5"/>')
-        o.append(f'<text x="{X(x0):.3f}" y="{Y(y1) - 1.2:.3f}" font-size="3" fill="#e08000">'
+                 f'fill="none" stroke="#e08000" stroke-width="{0.3 * k:.2f}" '
+                 f'stroke-dasharray="{3 * k:.2f},{1.5 * k:.2f}"/>')
+        o.append(f'<text x="{X(x0):.3f}" y="{Y(y1) - 1.2 * k:.3f}" font-size="{3 * k:.2f}" fill="#e08000">'
                  f'使用範囲 {x1 - x0:.1f} × {y1 - y0:.1f} mm</text>')
 
     # 凡例
-    ly = Y(0) + 9
-    o.append(f'<text x="{X(0)}" y="{ly}" font-size="3" fill="#333">'
+    o.append(f'<text x="{wx0:.2f}" y="{Y(wy0) + m * 0.85:.2f}" font-size="{2.6 * k:.2f}" fill="#333">'
              '線の色 = 切断順(青→緑→赤)/ 数字 = 順番(×N はパス回数)/ 破線(灰) = 早送り G0(レーザー OFF)'
              ' / 細い灰線 = 補正前の DXF 輪郭 / 橙の破線 = 材料の使用範囲</text>')
     o.append("</svg>")
@@ -317,11 +337,7 @@ def build_report(text: str, parsed: ParsedGcode, machine: Machine, plan: Plan,
     travel_len = sum(dist(m.start, m.end) for m in parsed.motions if m.kind == "G0")
     t = estimate_time(parsed, machine)
     burns = extract_burns(parsed, text)
-    all_pts = [p for b in burns for p in b.points]
-    bb = None
-    if all_pts:
-        bb = (min(p[0] for p in all_pts), min(p[1] for p in all_pts),
-              max(p[0] for p in all_pts), max(p[1] for p in all_pts))
+    bb = burns_bbox(burns)
 
     L: list[str] = []
     L.append("=" * 60)

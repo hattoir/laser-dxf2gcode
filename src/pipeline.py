@@ -31,6 +31,7 @@ class Outcome:
     report_path: Path
     frame_path: Path | None = None
     warnings: list[str] = field(default_factory=list)
+    detail_path: Path | None = None
 
 
 def output_paths(out_gcode: Path) -> tuple[Path, Path, Path]:
@@ -114,6 +115,12 @@ def process(contours: Sequence[Contour], profile: Profile, machine: Machine, out
         if warnings:
             warn_lines.append(f"警告 {len(warnings)} 件(レポート参照)")
         svg = render_svg(result.text, parsed, machine, plan, title or out_gcode.name, info, warn_lines)
+        detail = None
+        if report.bbox:
+            x0, y0, x1, y1 = report.bbox
+            pad = 8.0
+            detail = render_svg(result.text, parsed, machine, plan, (title or out_gcode.name) + "(拡大)",
+                                info, warn_lines, window=(x0 - pad, y0 - pad, x1 + pad, y1 + pad))
         frame = frame_gcode(report, machine) if write_frame else None
     except Dxf2GcodeError:
         for p in (gcode_path, frame_path):
@@ -122,8 +129,12 @@ def process(contours: Sequence[Contour], profile: Profile, machine: Machine, out
         raise
 
     _write_atomic(svg_path, svg)
+    detail_path = None
+    if detail:
+        detail_path = svg_path.with_name(svg_path.name.replace("_preview.svg", "_detail.svg"))
+        _write_atomic(detail_path, detail)
     _write_atomic(report_path, report.text)
     if frame_path and frame:
         _write_atomic(frame_path, frame)
     _write_atomic(gcode_path, result.text)  # 最後に書く
-    return Outcome(plan, result, report, gcode_path, svg_path, report_path, frame_path, warnings)
+    return Outcome(plan, result, report, gcode_path, svg_path, report_path, frame_path, warnings, detail_path)

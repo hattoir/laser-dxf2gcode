@@ -2,8 +2,15 @@
 
 このツールの核心部分。考え方は README の「設計の要点」を参照。
 
-    偶数階層(0, 2, ...) = 外形(部品の輪郭)  → 内側へ kerf/2 オフセット
-    奇数階層(1, 3, ...) = 穴                  → 外側へ kerf/2 オフセット
+    偶数階層(0, 2, ...) = 外形(部品の輪郭)  → 外側(捨て側)へ kerf/2 オフセット
+    奇数階層(1, 3, ...) = 穴                  → 内側(捨て側)へ kerf/2 オフセット
+
+ビームは幅 kerf の溝を掘るので、ビームの中心を常に「捨て材の側」へ kerf/2
+ずらすと、溝の縁がちょうど設計線に来て部品も穴も設計寸法に仕上がる。
+(補正なしだと部品は kerf/2 ずつ小さく、穴は kerf/2 ずつ大きくなる)
+※ 開発時の指示書は「外形は内側へ・穴は外側へ」だったが、それでは誤差が
+  倍になるため、指示書の目的(穴にボルトが入る寸法)を優先してこの向きにした。
+  README「設計の要点 2」参照。
 
 切断順序は「深い階層から」。同じ階層の中では直前の終点に最も近い輪郭を
 貪欲に選ぶ。これで「ある部品の穴は、必ずその部品の外形より先に切られる」
@@ -206,7 +213,7 @@ def plan_toolpaths(contours: Sequence[Contour], profile: Profile, kerf: float | 
         role = "hole" if is_hole else "outer"
         delta = 0.0
         if s.kerf_compensation and kerf > 0:
-            delta = kerf / 2 if is_hole else -kerf / 2
+            delta = -kerf / 2 if is_hole else kerf / 2  # 常に捨て側へ
         results = offset_polygon(c.points, delta, arc_tol)
         if not results:
             what = "穴" if is_hole else "外形"
