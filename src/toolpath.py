@@ -162,11 +162,14 @@ class _Item:
 
 
 def plan_toolpaths(contours: Sequence[Contour], profile: Profile, kerf: float | None = None,
-                   lead_in: float = 0.0, start: Point = (0.0, 0.0), arc_tol: float = 0.01) -> Plan:
+                   lead_in: float = 0.0, start: Point = (0.0, 0.0), arc_tol: float = 0.01,
+                   bounds: tuple[float, float, float, float] | None = None) -> Plan:
     """輪郭のリストから、補正済み・順序付きの CutPath のリストを作る。
 
     kerf: None ならプロファイルの値。lead_in: 外形の進入線の長さ [mm](0 でなし)。
     start: ヘッドの初期位置(最初の輪郭の選択に使う)。
+    bounds: (x0, y0, x1, y1)。与えるとリードインの進入点をこの範囲内でだけ探す
+            (範囲外の座標そのものは G-code 生成時の検査で必ず止まる。これは使い勝手のため)
     """
     kerf = profile.kerf if kerf is None else kerf
     if kerf < 0:
@@ -241,7 +244,7 @@ def plan_toolpaths(contours: Sequence[Contour], profile: Profile, kerf: float | 
     all_polys = [(it.poly, it.depth) for it in cut_items]
     for d in sorted({it.depth for it in cut_items}, reverse=True):
         group = [it for it in cut_items if it.depth == d]
-        pos = _greedy(group, pos, paths, lead_in, all_polys, warnings)
+        pos = _greedy(group, pos, paths, lead_in, all_polys, warnings, bounds)
 
     return Plan(paths=paths, warnings=warnings,
                 parts=sum(1 for d in depths if d % 2 == 0),
@@ -272,7 +275,8 @@ def _nearest_vertex(p: Point, poly: Sequence[Point]) -> tuple[float, int]:
 
 
 def _greedy(items: list[_Item], pos: Point, out: list[CutPath], lead_in: float,
-            all_polys: list[tuple[list[Point], int]], warnings: list[str]) -> Point:
+            all_polys: list[tuple[list[Point], int]], warnings: list[str],
+            bounds: tuple[float, float, float, float] | None = None) -> Point:
     """直前の終点に最も近いものから順に並べる(貪欲法)。閉ループは開始点も回転する。"""
     remaining = list(items)
     while remaining:
@@ -297,7 +301,7 @@ def _greedy(items: list[_Item], pos: Point, out: list[CutPath], lead_in: float,
         use_lead = lead_in > 0 and it.role == "outer"
         pts, lead_pt = None, None
         if use_lead:
-            pts, lead_pt = _with_lead_in(it, pos, lead_in, all_polys)
+            pts, lead_pt = _with_lead_in(it, pos, lead_in, all_polys, bounds)
             if pts is None:
                 warnings.append(f"リードインを置ける場所が見つからないため省略しました: {it.source}")
         if pts is None:
@@ -311,7 +315,9 @@ def _greedy(items: list[_Item], pos: Point, out: list[CutPath], lead_in: float,
 
 
 def _with_lead_in(it: _Item, pos: Point, length: float,
-                  all_polys: list[tuple[list[Point], int]]) -> tuple[list[Point] | None, Point | None]:
+                  all_polys: list[tuple[list[Point], int]],
+                  bounds: tuple[float, float, float, float] | None = None
+                  ) -> tuple[list[Point] | None, Point | None]:
     """外形に進入線を付ける。候補点: 現在位置に最も近い点 → 長い辺の中点(長い順)。
 
     進入線の始点は「捨て側(進行方向の右)」に length 離した点。その点が
@@ -333,6 +339,8 @@ def _with_lead_in(it: _Item, pos: Point, length: float,
             continue
         nx, ny = (b[1] - a[1]) / L, -(b[0] - a[0]) / L  # 右法線
         lp = (q[0] + nx * length, q[1] + ny * length)
+        if bounds and not (bounds[0] <= lp[0] <= bounds[2] and bounds[1] <= lp[1] <= bounds[3]):
+            continue
         if any(distance_to_polygon(lp, p) < 0.5 * length for p, _ in all_polys):
             continue
         level = sum(1 for p, _ in all_polys if point_in_polygon(lp, p))

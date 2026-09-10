@@ -77,11 +77,20 @@ def test_small_work_area_machine():
 
 
 def test_lead_in_outside_area_detected():
+    # 端から 0.5mm の部品に 2mm のリードイン → 進入点が X=-1.5 → 停止(最終防壁)
     cs = [Contour(rect(0.5, 10, 20, 30), True, "0", "near-edge")]
     plan = plan_toolpaths(cs, profile(kerf=0.0), lead_in=2.0, start=(0, 20))
-    if any(p.lead_in and p.points[0][0] < 0 for p in plan.paths):
-        with pytest.raises(WorkAreaError):
-            generate_gcode(plan, machine())
+    assert plan.paths[0].lead_in and plan.paths[0].points[0][0] < 0
+    with pytest.raises(WorkAreaError):
+        generate_gcode(plan, machine())
+
+
+def test_lead_in_respects_bounds_when_given():
+    cs = [Contour(rect(0.5, 10, 20, 30), True, "0", "near-edge")]
+    plan = plan_toolpaths(cs, profile(kerf=0.0), lead_in=2.0, start=(0, 20), bounds=(0, 0, 400, 415))
+    lp = plan.paths[0].points[0]
+    assert plan.paths[0].lead_in and 0 <= lp[0] <= 400 and 0 <= lp[1] <= 415
+    generate_gcode(plan, machine())
 
 
 # ---------------- 5. G-code の規則 ----------------

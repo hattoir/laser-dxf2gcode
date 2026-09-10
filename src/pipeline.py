@@ -99,7 +99,8 @@ def process(contours: Sequence[Contour], profile: Profile, machine: Machine, out
     meta = dict(meta or {})
     try:
         plan = plan_toolpaths(contours, profile, kerf=kerf, lead_in=lead_in,
-                              start=(machine.park_x, machine.park_y))
+                              start=(machine.park_x, machine.park_y),
+                              bounds=(0.0, 0.0, machine.x_max, machine.y_max))
         meta.setdefault("profile", profile.name)
         meta["kerf"] = f"{plan.kerf:.3f} mm"
         result = generate_gcode(plan, machine, pass_mode=pass_mode, meta=meta)

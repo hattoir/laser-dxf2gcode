@@ -1,12 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="5.04 -136.68 250.93 135.21" width="1000" height="539" font-family="sans-serif">
 <rect x="5.04" y="-136.68" width="250.93" height="135.21" fill="#ffffff"/>
-<text x="11.90" y="-132.68" font-size="2.86" font-weight="bold">bracket.dxf  [mdf_5mm](拡大)</text>
-<text x="11.90" y="-129.82" font-size="2.06" fill="#333">source: bracket.dxf</text>
-<text x="11.90" y="-126.96" font-size="2.06" fill="#333">profile: mdf_5mm</text>
-<text x="11.90" y="-124.10" font-size="2.06" fill="#333">kerf: 0.200 mm</text>
-<text x="11.90" y="-121.25" font-size="2.06" fill="#333">部品 3 / 穴 9 / パス総数 51 / 切断 4,483 mm / 推定 0:17:54</text>
-<text x="11.90" y="-118.39" font-size="2.06" fill="#c00000">未確認の仮定値あり: laser_power_w, s_max, junction_deviation, park_x, park_y, air_assist_gcode</text>
-<text x="11.90" y="-115.53" font-size="2.06" fill="#c00000">警告 3 件(レポート参照)</text>
 <rect x="0" y="-415.0" width="400.0" height="415.0" fill="#fafafa" stroke="#222" stroke-width="0.34"/>
 <text x="50" y="-5.58" font-size="1.71" text-anchor="middle" fill="#666">50</text>
 <text x="100" y="-5.58" font-size="1.71" text-anchor="middle" fill="#666">100</text>
@@ -104,4 +97,12 @@
 <rect x="19.900" y="-100.100" width="221.213" height="83.772" fill="none" stroke="#e08000" stroke-width="0.17" stroke-dasharray="1.71,0.86"/>
 <text x="19.900" y="-100.786" font-size="1.71" fill="#e08000">使用範囲 221.2 × 83.8 mm</text>
 <text x="11.90" y="-2.50" font-size="1.49" fill="#333">線の色 = 切断順(青→緑→赤)/ 数字 = 順番(×N はパス回数)/ 破線(灰) = 早送り G0(レーザー OFF) / 細い灰線 = 補正前の DXF 輪郭 / 橙の破線 = 材料の使用範囲</text>
+<rect x="5.04" y="-136.68" width="250.93" height="21.72" fill="#ffffff"/>
+<text x="11.90" y="-132.68" font-size="2.86" font-weight="bold">bracket.dxf  [mdf_5mm](拡大)</text>
+<text x="11.90" y="-129.82" font-size="2.06" fill="#333">source: bracket.dxf</text>
+<text x="11.90" y="-126.96" font-size="2.06" fill="#333">profile: mdf_5mm</text>
+<text x="11.90" y="-124.10" font-size="2.06" fill="#333">kerf: 0.200 mm</text>
+<text x="11.90" y="-121.25" font-size="2.06" fill="#333">部品 3 / 穴 9 / パス総数 51 / 切断 4,483 mm / 推定 0:17:54</text>
+<text x="11.90" y="-118.39" font-size="2.06" fill="#c00000">未確認の仮定値あり: laser_power_w, s_max, junction_deviation, park_x, park_y, air_assist_gcode</text>
+<text x="11.90" y="-115.53" font-size="2.06" fill="#c00000">警告 3 件(レポート参照)</text>
 </svg>

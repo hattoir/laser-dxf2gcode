@@ -223,15 +223,6 @@ def render_svg(text: str, parsed: ParsedGcode, machine: Machine, plan: Plan | No
     o.append(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vx:.2f} {vy:.2f} {vw:.2f} {vh:.2f}" '
              f'width="{px_w}" height="{px_w * vh / vw:.0f}" font-family="sans-serif">')
     o.append(f'<rect x="{vx:.2f}" y="{vy:.2f}" width="{vw:.2f}" height="{vh:.2f}" fill="#ffffff"/>')
-    # ヘッダ
-    y = vy + 7.0 * k
-    o.append(f'<text x="{wx0:.2f}" y="{y:.2f}" font-size="{5 * k:.2f}" font-weight="bold">{html.escape(title)}</text>')
-    for line in info_lines:
-        y += 5.0 * k
-        o.append(f'<text x="{wx0:.2f}" y="{y:.2f}" font-size="{3.6 * k:.2f}" fill="#333">{html.escape(line)}</text>')
-    for line in warn_lines:
-        y += 5.0 * k
-        o.append(f'<text x="{wx0:.2f}" y="{y:.2f}" font-size="{3.6 * k:.2f}" fill="#c00000">{html.escape(line)}</text>')
 
     # 加工エリアとグリッド(拡大表示では 10mm 間隔)
     step = 50 if (wx1 - wx0) > 200 or (wy1 - wy0) > 200 else 10
@@ -311,6 +302,17 @@ def render_svg(text: str, parsed: ParsedGcode, machine: Machine, plan: Plan | No
     o.append(f'<text x="{wx0:.2f}" y="{Y(wy0) + m * 0.85:.2f}" font-size="{2.6 * k:.2f}" fill="#333">'
              '線の色 = 切断順(青→緑→赤)/ 数字 = 順番(×N はパス回数)/ 破線(灰) = 早送り G0(レーザー OFF)'
              ' / 細い灰線 = 補正前の DXF 輪郭 / 橙の破線 = 材料の使用範囲</text>')
+
+    # ヘッダ(最後に描く。拡大表示では加工エリアの塗りの上に重なるため白帯を敷く)
+    o.append(f'<rect x="{vx:.2f}" y="{vy:.2f}" width="{vw:.2f}" height="{header_h:.2f}" fill="#ffffff"/>')
+    y = vy + 7.0 * k
+    o.append(f'<text x="{wx0:.2f}" y="{y:.2f}" font-size="{5 * k:.2f}" font-weight="bold">{html.escape(title)}</text>')
+    for line in info_lines:
+        y += 5.0 * k
+        o.append(f'<text x="{wx0:.2f}" y="{y:.2f}" font-size="{3.6 * k:.2f}" fill="#333">{html.escape(line)}</text>')
+    for line in warn_lines:
+        y += 5.0 * k
+        o.append(f'<text x="{wx0:.2f}" y="{y:.2f}" font-size="{3.6 * k:.2f}" fill="#c00000">{html.escape(line)}</text>')
     o.append("</svg>")
     return "\n".join(o) + "\n"
 
