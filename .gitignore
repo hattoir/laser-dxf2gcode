@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# 生成物(サンプルの出力は out/ に置く。コミットしない)
+out/
+*.gcode
+!samples/*.gcode

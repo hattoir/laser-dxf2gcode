@@ -1,0 +1,43 @@
+# 材料プロファイル: MDF 5mm
+#
+# 各値の末尾コメントに【実測値】か【仮定値】かを明記する。
+# ここにある値はすべて【仮定値】(22W 機を想定した一般的な目安)。
+# 必ずキャリブレーション(README「最初にやること」)で実測して更新すること。
+#
+#   kerf       : 切り幅 [mm]。カーフ補正に使う
+#   power      : 出力 [%]。machine.yaml の s_max を 100% として S 値に換算
+#   feed       : 送り速度 [mm/min]
+#   passes     : 同じ輪郭を何回なぞるか
+#   per_pass   : (任意)パスごとの上書き。例: 1 パス目だけ弱くする
+#   through_cut: true = 貫通切断。カーフ補正と「内→外」順序の対象
+#   kerf_compensation: false にするとその層は線の上をそのまま走る(刻印など)
+#   order      : 層の実行順(小さいほど先)。貫通切断しない層は貫通切断より必ず先に実行される
+#   air_assist : machine.yaml で air_assist_gcode: true のときだけ M8/M9 を出す
+
+mdf_5mm:
+  kerf: 0.20                 # 【仮定値】実測して更新すること(calibrate apply-kerf)
+
+  # DXF のレイヤー名が layers のどれにも一致しないときに使う層。
+  # Fusion 360 の DXF はレイヤー "0" に全部入ることが多いので既定は cut。
+  default_layer: cut
+
+  layers:
+    cut:
+      power: 100             # 【仮定値】[%]
+      feed: 250              # 【仮定値】[mm/min]
+      passes: 4              # 【仮定値】
+      through_cut: true
+      kerf_compensation: true
+      order: 10
+      air_assist: true
+      # per_pass:            # 例: 1 パス目だけ 60% で表面を焼き、2 パス目以降は既定値
+      #   - {power: 60}
+      #   - {}
+    engrave:
+      power: 30              # 【仮定値】[%]
+      feed: 3000             # 【仮定値】[mm/min]
+      passes: 1              # 【仮定値】
+      through_cut: false
+      kerf_compensation: false
+      order: 0
+      air_assist: false
