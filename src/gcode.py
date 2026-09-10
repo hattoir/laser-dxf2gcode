@@ -143,7 +143,9 @@ def generate_gcode(plan: Plan, machine: Machine, *, pass_mode: str = "path",
         out.append(ascii_comment(f"; {k}: {v}"))
     out.append(ascii_comment(f"; machine: {machine.name}  area: X0-{machine.x_max:g} Y0-{machine.y_max:g}  "
                              f"S max: {machine.s_max}"))
-    out.append(f"; kerf: {plan.kerf:.3f} mm  pass_mode: {pass_mode}")
+    if "kerf" not in meta:
+        out.append(f"; kerf: {plan.kerf:.3f} mm")
+    out.append(f"; pass_mode: {pass_mode}")
     if machine.unverified:
         out.append(ascii_comment("; WARNING unverified machine settings: " + ", ".join(machine.unverified)))
     out.append("; !!! Check the SVG preview before running. Test on scrap material first. !!!")

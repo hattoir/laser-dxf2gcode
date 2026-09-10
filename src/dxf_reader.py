@@ -104,7 +104,7 @@ def read_dxf(path: str | Path, chord_tol: float = DEFAULT_CHORD_TOL,
             warnings.append(
                 f"閉じていないパス: レイヤー '{c.layer}' {c.source} "
                 f"始点({c.points[0][0]:.3f}, {c.points[0][1]:.3f}) 終点({c.points[-1][0]:.3f}, {c.points[-1][1]:.3f})"
-                " → カーフ補正なしで、閉じた輪郭より先に切ります")
+                "(貫通切断の層ではカーフ補正なしで、閉じた輪郭より先に切ります)")
     return ReadResult(contours=contours, warnings=warnings, insunits=insunits, entity_counts=dict(counts))
 
 
