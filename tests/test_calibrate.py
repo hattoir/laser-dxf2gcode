@@ -80,7 +80,9 @@ def test_default_variants_never_exceed_base_energy():
 def test_font_covers_labels():
     for s in ["P100", "F3000", "N4", "ABCD", "K0.5"]:
         assert text_polylines(s, 0, 0, 2.0)
-    assert set("0123456789ABCDPFN") <= set(FONT)
+    assert set("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ .-/") <= set(FONT)
+    for ch in FONT:
+        assert text_polylines(ch, 0, 0, 3.0) or ch == " "
     assert text_width("P100", 6.0) == pytest.approx(22.0)
 
 

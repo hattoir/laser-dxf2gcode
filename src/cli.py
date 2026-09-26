@@ -13,9 +13,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from .config import load_machine, load_profile
-from .dxf_reader import DEFAULT_CHORD_TOL, DEFAULT_JOIN_TOL, read_dxf
-from .errors import Dxf2GcodeError, WorkAreaError
+from .config import Profile, load_machine, load_profile
+from .dxf_reader import DEFAULT_CHORD_TOL, DEFAULT_JOIN_TOL, Contour, read_dxf
+from .errors import ConfigError, Dxf2GcodeError, WorkAreaError
 from .pipeline import Outcome, process, transform_contours
 
 EXIT_AREA = 2
@@ -36,24 +36,61 @@ def _print_outcome(o: Outcome) -> None:
     print(">>> SVG プレビューを目視確認してから流してください。必ず端材でテストしてから本番材を。<<<")
 
 
+def _resolve_layer(profile: Profile, name: str) -> str:
+    """プロファイルにある層の正式な名前を返す(大文字小文字は区別しない)。"""
+    for k in profile.layers:
+        if k.lower() == name.lower():
+            return k
+    raise ConfigError(f"プロファイル '{profile.name}' に層 '{name}' がありません"
+                      f"(ある層: {', '.join(profile.layers)})")
+
+
+def _read_labeled(path: Path, layer: str | None, a: argparse.Namespace) -> tuple[list[Contour], list[str]]:
+    """DXF を読み、layer を指定したらすべての輪郭をその層に付け替える。"""
+    res = read_dxf(path, chord_tol=a.chord_tol, join_tol=a.join_tol, assume_mm=a.assume_mm)
+    if not res.contours:
+        raise Dxf2GcodeError(f"{path} に加工できる図形がありません")
+    warnings = [f"{path.name}: {w}" for w in res.warnings]
+    if layer is None:
+        return list(res.contours), warnings
+    return [Contour(c.points, c.closed, layer, c.source) for c in res.contours], warnings
+
+
 def cmd_convert(a: argparse.Namespace) -> int:
     machine = load_machine(a.machine)
     profile = load_profile(a.profile)
     src = Path(a.input)
-    res = read_dxf(src, chord_tol=a.chord_tol, join_tol=a.join_tol, assume_mm=a.assume_mm)
-    if not res.contours:
-        raise Dxf2GcodeError(f"{src} に加工できる図形がありません")
-    contours, (dx, dy) = transform_contours(res.contours, a.align, a.margin, tuple(a.offset))
+
+    as_layer = _resolve_layer(profile, a.as_layer) if a.as_layer else None
+    contours, warnings = _read_labeled(src, as_layer, a)
+    meta = {"source": src.name, "profile": profile.name}
+    if as_layer:
+        meta["source layer"] = f"全体を '{as_layer}' として加工"
+
+    if a.engrave:
+        eng_layer = _resolve_layer(profile, a.engrave_layer)
+        if profile.layers[eng_layer].through_cut:
+            warnings.append(f"--engrave で指定した層 '{eng_layer}' は through_cut: true です。"
+                            "刻印ではなく貫通切断になります")
+        names = []
+        for path in a.engrave:
+            cs, w = _read_labeled(Path(path), eng_layer, a)
+            contours += cs
+            warnings += w
+            names.append(Path(path).name)
+        meta["engrave"] = f"{', '.join(names)} → 層 '{eng_layer}'"
+
+    # 位置合わせは全ファイルまとめて行う(刻印と切断の相対位置を崩さないため)
+    contours, (dx, dy) = transform_contours(contours, a.align, a.margin, tuple(a.offset))
     if not a.return_home:
         machine.return_home = False
     out = Path(a.output) if a.output else Path("out") / (src.stem + ".gcode")
-    meta = {"source": src.name, "profile": profile.name}
     if dx or dy:
         meta["placement"] = f"moved by ({dx:+.3f}, {dy:+.3f}) mm"
     if a.lead_in:
         meta["lead-in"] = f"{a.lead_in:g} mm"
     o = process(contours, profile, machine, out, kerf=a.kerf, lead_in=a.lead_in, pass_mode=a.pass_mode,
-                meta=meta, read_warnings=res.warnings, title=f"{src.name}  [{profile.name}]",
+                meta=meta, read_warnings=warnings, title=f"{src.name}  [{profile.name}]",
                 write_frame=a.frame)
     _print_outcome(o)
     return 0
@@ -73,6 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--chord-tol", type=float, default=DEFAULT_CHORD_TOL, help="曲線近似の弦の許容誤差 [mm]")
     c.add_argument("--join-tol", type=float, default=DEFAULT_JOIN_TOL, help="端点を繋ぐ許容誤差 [mm]")
     c.add_argument("--assume-mm", action="store_true", help="$INSUNITS が mm でなくても mm とみなす")
+    c.add_argument("--engrave", action="append", metavar="DXF",
+                   help="刻印用の DXF(複数指定可)。中身をすべて --engrave-layer の層として、切断より先に加工する")
+    c.add_argument("--engrave-layer", default="engrave", help="--engrave で使う層の名前(既定 engrave)")
+    c.add_argument("--as-layer", metavar="LAYER",
+                   help="入力 DXF のレイヤー名を無視し、全体をこの層として加工する")
     c.add_argument("--align", choices=["none", "lower-left"], default="none",
                    help="配置: lower-left = 図形の左下を (margin, margin) へ移動")
     c.add_argument("--margin", type=float, default=5.0, help="--align lower-left の余白 [mm]")

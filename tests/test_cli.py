@@ -72,3 +72,47 @@ def test_calibrate_coupon_and_kerf(tmp_path):
     roles = [l.split("role=")[1].split()[0] for l in text.splitlines() if "role=" in l]
     first_cut = next(i for i, r in enumerate(roles) if r != "mark")
     assert all(r != "mark" for r in roles[first_cut:])
+
+
+def test_engrave_file_is_engraved_before_cutting(tmp_path):
+    cut = _dxf(tmp_path / "cut.dxf", [("rect", 20, 20, 80, 60)])
+    marks = _dxf(tmp_path / "marks.dxf", [("circle", (50, 40), 5)])
+    out = tmp_path / "j.gcode"
+    assert main(["convert", str(cut), "--engrave", str(marks), "-o", str(out)]) == 0
+    text = out.read_text()
+    roles = [l.split("role=")[1].split()[0] for l in text.splitlines() if "role=" in l]
+    layers = [l.split("layer=")[1].split()[0] for l in text.splitlines() if "layer=" in l]
+    assert roles[0] == "mark" and layers[0] == "engrave"
+    assert set(roles[1:]) == {"outer"}      # 刻印の円は穴として切られない
+    assert "hole" not in roles
+
+
+def test_engrave_keeps_relative_position_after_align(tmp_path):
+    from src.gcode import parse_gcode
+    from src.preview import extract_burns
+    cut = _dxf(tmp_path / "cut.dxf", [("rect", -40, -25, 40, 25)])
+    marks = _dxf(tmp_path / "marks.dxf", [("circle", (0, 0), 5)])
+    out = tmp_path / "a.gcode"
+    assert main(["convert", str(cut), "--engrave", str(marks), "-o", str(out),
+                 "--align", "lower-left", "--margin", "5"]) == 0
+    text = out.read_text()
+    mark = [b for b in extract_burns(parse_gcode(text), text) if b.role == "mark"][0]
+    pts = mark.points[:-1]   # 閉じたパスは始点に戻るので、重複する終点を除く
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    assert abs(cx - 45) < 0.05 and abs(cy - 30) < 0.05   # 板の中心に乗ったまま
+
+
+def test_as_layer_treats_whole_file_as_engrave(tmp_path):
+    src = _dxf(tmp_path / "m.dxf", [("rect", 20, 20, 80, 60)])
+    out = tmp_path / "m.gcode"
+    assert main(["convert", str(src), "--as-layer", "engrave", "-o", str(out)]) == 0
+    text = out.read_text()
+    assert "role=mark" in text and "role=outer" not in text
+
+
+def test_unknown_layer_name_is_rejected(tmp_path):
+    src = _dxf(tmp_path / "m.dxf", [("rect", 20, 20, 80, 60)])
+    out = tmp_path / "m.gcode"
+    assert main(["convert", str(src), "--as-layer", "nosuch", "-o", str(out)]) == EXIT_ERROR
+    assert not out.exists()

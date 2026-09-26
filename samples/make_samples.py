@@ -9,14 +9,19 @@ bracket.dxf   … 入れ子構造を一通り含む(機械座標で配置済み)
     - 部品 B: SPLINE の外形と、POLYLINE(2D, ふくらみ付き)の穴
     - 刻印: レイヤー "engrave" に円と線
     すべてレイヤー "0"(Fusion 360 の既定)+ "engrave"
+bracket_marks.dxf … bracket.dxf に --engrave で重ねる刻印(文字)
 centered.dxf  … Fusion 360 のスケッチ原点が部品中心にある想定(負の座標を含む)
     → そのままだとエリア外で停止。--align lower-left で配置する例
 """
+import sys
 from pathlib import Path
 
 import ezdxf
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+
+from src.calibrate import text_polylines  # noqa: E402  (刻印用の簡易ストロークフォント)
 
 
 def rounded_rect(msp, x0, y0, w, h, r, layer="0"):
@@ -75,6 +80,18 @@ def make_bracket(path: Path, ox=20.0, oy=20.0):
     doc.saveas(path)
 
 
+def make_marks(path: Path, ox=20.0, oy=20.0):
+    """bracket.dxf に --engrave で重ねる刻印用 DXF(レイヤーは何でもよい)。"""
+    doc = ezdxf.new("R2010")
+    doc.header["$INSUNITS"] = 4
+    msp = doc.modelspace()
+    for pl in text_polylines("PART 1", ox + 12, oy + 30, 6.0):
+        msp.add_lwpolyline(pl)
+    for pl in text_polylines("MDF 5.0", ox + 12, oy + 18, 4.0):
+        msp.add_lwpolyline(pl)
+    return doc.saveas(path)
+
+
 def make_centered(path: Path):
     doc = ezdxf.new("R2010")
     doc.header["$INSUNITS"] = 4
@@ -90,5 +107,6 @@ def make_centered(path: Path):
 
 if __name__ == "__main__":
     make_bracket(HERE / "bracket.dxf")
+    make_marks(HERE / "bracket_marks.dxf")
     make_centered(HERE / "centered.dxf")
-    print("wrote", HERE / "bracket.dxf", HERE / "centered.dxf")
+    print("wrote bracket.dxf / bracket_marks.dxf / centered.dxf in", HERE)

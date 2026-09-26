@@ -42,8 +42,7 @@ def test_open_path_is_warned_and_kept_separately(tmp_path):
     msp.add_line((0, 10), (0, 0))
     res = read_dxf(_save(doc, tmp_path))
     assert not res.closed
-    assert len(res.open) == 1
-    assert any("閉じていないパス" in w for w in res.warnings)
+    assert len(res.open) == 1   # 警告は層の設定を見る toolpath 側で出す
 
 
 def test_layer_name_is_kept(tmp_path):

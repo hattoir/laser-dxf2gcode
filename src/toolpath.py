@@ -193,6 +193,10 @@ def plan_toolpaths(contours: Sequence[Contour], profile: Profile, kerf: float | 
         elif not c.closed:
             through_open.append(_Item(list(c.points), False, c.layer, settings, "open", source=c.source,
                                       original=list(c.points)))
+            warnings.append(
+                f"閉じていないパス: レイヤー '{c.layer}' {c.source} "
+                f"始点({c.points[0][0]:.3f}, {c.points[0][1]:.3f}) 終点({c.points[-1][0]:.3f}, {c.points[-1][1]:.3f})"
+                " → 貫通切断の層なので、カーフ補正なしで閉じた輪郭より先に切ります")
         else:
             through_closed.append(c)
             through_settings.append(settings)

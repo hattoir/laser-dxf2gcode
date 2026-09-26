@@ -199,3 +199,11 @@ def test_lead_in_skipped_when_no_room():
         if p.lead_in:
             lp = p.points[0]
             assert all(not point_in_polygon(lp, q) for q in polys)
+
+
+def test_open_path_warns_only_on_through_cut_layers():
+    cs = [Contour([(5, 5), (45, 5)], False, "0", "slit"),
+          Contour([(10, 40), (30, 40)], False, "engrave", "mark-line")]
+    plan = plan_toolpaths(cs, make_profile())
+    warned = [w for w in plan.warnings if "閉じていないパス" in w]
+    assert len(warned) == 1 and "slit" in warned[0]

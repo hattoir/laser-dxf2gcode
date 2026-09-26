@@ -99,12 +99,8 @@ def read_dxf(path: str | Path, chord_tol: float = DEFAULT_CHORD_TOL,
     raws, counts = extract_entities(doc.modelspace(), chord_tol, warnings)
     contours = chain_paths(raws, join_tol, warnings)
     contours = remove_duplicate_contours(contours, max(join_tol, chord_tol), warnings)
-    for c in contours:
-        if not c.closed:
-            warnings.append(
-                f"閉じていないパス: レイヤー '{c.layer}' {c.source} "
-                f"始点({c.points[0][0]:.3f}, {c.points[0][1]:.3f}) 終点({c.points[-1][0]:.3f}, {c.points[-1][1]:.3f})"
-                "(貫通切断の層ではカーフ補正なしで、閉じた輪郭より先に切ります)")
+    # 開いたパスは「刻印の層なら当たり前・貫通切断の層なら注意」なので、
+    # 層の設定を知っている toolpath 側で警告する(ここでは判断しない)
     return ReadResult(contours=contours, warnings=warnings, insunits=insunits, entity_counts=dict(counts))
 
 
