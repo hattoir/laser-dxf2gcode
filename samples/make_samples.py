@@ -85,9 +85,10 @@ def make_marks(path: Path, ox=20.0, oy=20.0):
     doc = ezdxf.new("R2010")
     doc.header["$INSUNITS"] = 4
     msp = doc.modelspace()
-    for pl in text_polylines("PART 1", ox + 12, oy + 30, 6.0):
+    # 板の下辺側の空いている帯(穴・窓・長穴と重ならない位置)に置く
+    for pl in text_polylines("PART 1", ox + 18, oy + 6, 5.0):
         msp.add_lwpolyline(pl)
-    for pl in text_polylines("MDF 5.0", ox + 12, oy + 18, 4.0):
+    for pl in text_polylines("MDF 5.0", ox + 52, oy + 6, 4.0):
         msp.add_lwpolyline(pl)
     return doc.saveas(path)
 
