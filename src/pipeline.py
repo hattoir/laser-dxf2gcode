@@ -89,7 +89,7 @@ def _write_atomic(path: Path, text: str) -> None:
 
 
 def process(contours: Sequence[Contour], profile: Profile, machine: Machine, out_gcode: Path, *,
-            kerf: float | None = None, lead_in: float = 0.0, pass_mode: str = "path",
+            kerf: float | None = None, lead_in: float = 0.0, pass_mode: str = "path", min_gap: float = 0.5,
             meta: dict[str, str] | None = None, read_warnings: Sequence[str] = (),
             title: str = "", write_frame: bool = False) -> Outcome:
     out_gcode = Path(out_gcode)
@@ -100,7 +100,7 @@ def process(contours: Sequence[Contour], profile: Profile, machine: Machine, out
     try:
         plan = plan_toolpaths(contours, profile, kerf=kerf, lead_in=lead_in,
                               start=(machine.park_x, machine.park_y),
-                              bounds=(0.0, 0.0, machine.x_max, machine.y_max))
+                              bounds=(0.0, 0.0, machine.x_max, machine.y_max), min_gap=min_gap)
         meta.setdefault("profile", profile.name)
         meta["kerf"] = f"{plan.kerf:.3f} mm"
         result = generate_gcode(plan, machine, pass_mode=pass_mode, meta=meta)

@@ -163,13 +163,15 @@ class _Item:
 
 def plan_toolpaths(contours: Sequence[Contour], profile: Profile, kerf: float | None = None,
                    lead_in: float = 0.0, start: Point = (0.0, 0.0), arc_tol: float = 0.01,
-                   bounds: tuple[float, float, float, float] | None = None) -> Plan:
+                   bounds: tuple[float, float, float, float] | None = None,
+                   min_gap: float = 0.5) -> Plan:
     """輪郭のリストから、補正済み・順序付きの CutPath のリストを作る。
 
     kerf: None ならプロファイルの値。lead_in: 外形の進入線の長さ [mm](0 でなし)。
     start: ヘッドの初期位置(最初の輪郭の選択に使う)。
     bounds: (x0, y0, x1, y1)。与えるとリードインの進入点をこの範囲内でだけ探す
             (範囲外の座標そのものは G-code 生成時の検査で必ず止まる。これは使い勝手のため)
+    min_gap: 補正後の切断線どうしがこの距離 [mm] より近ければ警告する(0 で無効)
     """
     kerf = profile.kerf if kerf is None else kerf
     if kerf < 0:
@@ -232,6 +234,8 @@ def plan_toolpaths(contours: Sequence[Contour], profile: Profile, kerf: float | 
         for r in results:
             cut_items.append(_Item(orient(r, ccw=not is_hole), True, c.layer, s, role, depths[i], part_of[i],
                                    c.source, list(c.points)))
+    if min_gap > 0:
+        warnings.extend(find_close_cuts(cut_items, min_gap))
     if any(not s.kerf_compensation for s in through_settings):
         warnings.append("kerf_compensation: false の貫通切断レイヤーがあります(寸法は線の中心になります)")
 
@@ -255,6 +259,35 @@ def plan_toolpaths(contours: Sequence[Contour], profile: Profile, kerf: float | 
                 holes=sum(1 for d in depths if d % 2 == 1),
                 open_paths=len(through_open) + sum(1 for m in marks if not m.closed),
                 kerf=kerf)
+
+
+def find_close_cuts(items: list["_Item"], min_gap: float, max_report: int = 10) -> list[str]:
+    """補正後の切断線どうしが近すぎる箇所を探す。
+
+    細い削り残し(スリバー)は焦げやすく、燃えて脱落する。Fusion で
+    別スケッチに描いた切り欠きが外形に重なっている場合などに出る。
+    """
+    out: list[str] = []
+    n = len(items)
+    boxes = [bbox(it.poly) for it in items]
+    for i in range(n):
+        for j in range(i + 1, n):
+            bi, bj = boxes[i], boxes[j]
+            if (bi[0] > bj[2] + min_gap or bi[2] < bj[0] - min_gap
+                    or bi[1] > bj[3] + min_gap or bi[3] < bj[1] - min_gap):
+                continue
+            a, b = items[i].poly, items[j].poly
+            sa = max(1, len(a) // 64)
+            sb = max(1, len(b) // 64)
+            d = min(min(distance_to_polygon(p, b) for p in a[::sa]),
+                    min(distance_to_polygon(p, a) for p in b[::sb]))
+            if d < min_gap:
+                out.append(f"切断線どうしが {d:.3f}mm しか離れていません(細い削り残しは焦げて落ちます): "
+                           f"{items[i].role} {items[i].source} ↔ {items[j].role} {items[j].source}")
+            if len(out) >= max_report:
+                out.append("(近接箇所が多いため以降は省略)")
+                return out
+    return out
 
 
 def _nearest_on_polygon(p: Point, poly: Sequence[Point]) -> tuple[float, int, Point]:

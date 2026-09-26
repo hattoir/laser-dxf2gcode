@@ -116,3 +116,17 @@ def test_unknown_layer_name_is_rejected(tmp_path):
     out = tmp_path / "m.gcode"
     assert main(["convert", str(src), "--as-layer", "nosuch", "-o", str(out)]) == EXIT_ERROR
     assert not out.exists()
+
+
+def test_multiple_input_files_are_combined(tmp_path):
+    # Fusion 360 のスケッチ書き出しのように、外形と穴が別ファイルでも入れ子判定が効く
+    plate = _dxf(tmp_path / "plate.dxf", [("rect", 20, 20, 80, 60)])
+    h1 = _dxf(tmp_path / "h1.dxf", [("circle", (35, 40), 2.1)])
+    h2 = _dxf(tmp_path / "h2.dxf", [("circle", (65, 40), 3.0)])
+    out = tmp_path / "multi.gcode"
+    assert main(["convert", str(plate), str(h1), str(h2), "-o", str(out)]) == 0
+    text = out.read_text()
+    roles = [l.split("role=")[1].split()[0] for l in text.splitlines() if "role=" in l]
+    assert roles.count("hole") > 0 and roles[-1] == "outer"
+    assert all(r == "hole" for r in roles[:roles.index("outer")])
+    assert "3 files" in text or "3 files" in (tmp_path / "multi_report.txt").read_text()

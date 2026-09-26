@@ -207,3 +207,20 @@ def test_open_path_warns_only_on_through_cut_layers():
     plan = plan_toolpaths(cs, make_profile())
     warned = [w for w in plan.warnings if "閉じていないパス" in w]
     assert len(warned) == 1 and "slit" in warned[0]
+
+
+def test_close_cuts_are_warned():
+    # 外形の角に重ねて描いた切り欠き(別スケッチ)→ 補正後 0.2mm の削り残しになる
+    plan = plan_toolpaths(contours(rect(0, 0, 60, 30), rect(0, 0, 3, 3)), make_profile(kerf=0.2))
+    close = [w for w in plan.warnings if "しか離れていません" in w]
+    assert len(close) == 1 and "0.200mm" in close[0]
+
+
+def test_normal_spacing_does_not_warn():
+    plan = plan_toolpaths(contours(rect(0, 0, 60, 30), circle(30, 15, 5)), make_profile(kerf=0.2))
+    assert not [w for w in plan.warnings if "しか離れていません" in w]
+
+
+def test_min_gap_zero_disables_check():
+    plan = plan_toolpaths(contours(rect(0, 0, 60, 30), rect(0, 0, 3, 3)), make_profile(kerf=0.2), min_gap=0)
+    assert not [w for w in plan.warnings if "しか離れていません" in w]

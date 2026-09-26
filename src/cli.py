@@ -1,6 +1,7 @@
 """コマンドライン。
 
     python dxf2gcode.py convert part.dxf -p mdf_5mm
+    python dxf2gcode.py convert 外形.dxf 穴.dxf -p mdf_5mm     (複数スケッチをまとめる)
     python dxf2gcode.py calibrate coupon -p mdf_5mm
     python dxf2gcode.py calibrate kerf -p mdf_5mm
     python dxf2gcode.py calibrate apply-kerf -p mdf_5mm --strip-width 9.82
@@ -59,11 +60,20 @@ def _read_labeled(path: Path, layer: str | None, a: argparse.Namespace) -> tuple
 def cmd_convert(a: argparse.Namespace) -> int:
     machine = load_machine(a.machine)
     profile = load_profile(a.profile)
-    src = Path(a.input)
+    src = Path(a.input[0])
 
     as_layer = _resolve_layer(profile, a.as_layer) if a.as_layer else None
-    contours, warnings = _read_labeled(src, as_layer, a)
-    meta = {"source": src.name, "profile": profile.name}
+    contours: list[Contour] = []
+    warnings: list[str] = []
+    for path in a.input:
+        cs, w = _read_labeled(Path(path), as_layer, a)
+        contours += cs
+        warnings += w
+    names = [Path(x).name for x in a.input]
+    # Fusion 360 はスケッチ 1 つにつき DXF 1 ファイルなので、外形と穴が別ファイルになる。
+    # まとめて読み込めば、入れ子判定も切断順序もファイルの区別なく効く。
+    meta = {"source": names[0] if len(names) == 1 else f"{len(names)} files: {', '.join(names)}",
+            "profile": profile.name}
     if as_layer:
         meta["source layer"] = f"全体を '{as_layer}' として加工"
 
@@ -90,6 +100,7 @@ def cmd_convert(a: argparse.Namespace) -> int:
     if a.lead_in:
         meta["lead-in"] = f"{a.lead_in:g} mm"
     o = process(contours, profile, machine, out, kerf=a.kerf, lead_in=a.lead_in, pass_mode=a.pass_mode,
+                min_gap=a.min_gap,
                 meta=meta, read_warnings=warnings, title=f"{src.name}  [{profile.name}]",
                 write_frame=a.frame)
     _print_outcome(o)
@@ -102,7 +113,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("convert", help="DXF を G-code に変換(+ SVG プレビュー + レポート)")
-    c.add_argument("input", help="入力 DXF")
+    c.add_argument("input", nargs="+", metavar="DXF",
+                   help="入力 DXF(複数指定可。Fusion 360 はスケッチごとに別ファイルになるため)")
     c.add_argument("-p", "--profile", default="mdf_5mm", help="材料プロファイル名 または YAML パス")
     c.add_argument("-o", "--output", help="出力 G-code(既定: out/<入力名>.gcode)")
     c.add_argument("--kerf", type=float, default=None, help="カーフ幅 [mm](プロファイルの値を上書き)")
@@ -123,6 +135,8 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--pass-mode", choices=["path", "cycle"], default="path",
                    help="path = 輪郭ごとに回数分続けて切る(既定)/ cycle = 全体を 1 周ずつ繰り返す")
     c.add_argument("--no-return-home", dest="return_home", action="store_false", help="末尾の原点復帰をしない")
+    c.add_argument("--min-gap", type=float, default=0.5,
+                   help="切断線どうしがこの距離 [mm] より近ければ警告(既定 0.5、0 で無効)")
     c.add_argument("--frame", action="store_true", help="使用範囲をレーザー OFF でなぞる G-code も出力")
     c.set_defaults(func=cmd_convert)
 
