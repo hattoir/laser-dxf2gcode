@@ -52,9 +52,9 @@ def _read_labeled(path: Path, layer: str | None, a: argparse.Namespace) -> tuple
     if not res.contours:
         raise Dxf2GcodeError(f"{path} に加工できる図形がありません")
     warnings = [f"{path.name}: {w}" for w in res.warnings]
-    if layer is None:
-        return list(res.contours), warnings
-    return [Contour(c.points, c.closed, layer, c.source) for c in res.contours], warnings
+    # DXF のハンドルはファイルごとに振り直されるため、出どころにファイル名を付ける
+    return ([Contour(c.points, c.closed, layer or c.layer, f"{path.name}:{c.source}")
+             for c in res.contours], warnings)
 
 
 def cmd_convert(a: argparse.Namespace) -> int:
