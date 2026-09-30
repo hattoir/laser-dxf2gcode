@@ -18,6 +18,8 @@ Fusion 360 の DXF(と STL)から Creality Falcon2 22W 用の GRBL G-code を作
 ## 開発のしかた
 
 - テスト: `.venv/Scripts/python -m pytest -q`(変更したら必ず通す)
+- **`git add -A` を使わない**。自分が変えたファイルを名前で指定して add し、コミット前に `git status` で
+  他者のファイルが混ざっていないか確かめる(2026-10-01 に `.ai/` などを誤ってコミットした)
 - 長いパッチはスクリプトファイルに書いてから実行する(シェルの引用符で失敗したことがある)
 - 生成物は `out/`(git 管理外)。実例のスクリプトと DXF は `jobs/`
 
@@ -31,6 +33,10 @@ Fusion 360 の DXF(と STL)から Creality Falcon2 22W 用の GRBL G-code を作
 - 機種固有の操作(焦点合わせなど)は、答える前にメーカーの資料を確認する
 
 ## 関係するほかのフォルダ
+
+- このフォルダの `.ai/`・`ai-inbox/`・`ai-outbox/`・`ai-shared/` は `../ai-engineering-os`(複数プロダクト・
+  複数エージェントの横断基盤)の雛形。**このセッションで作ったものではない**。扱いはユーザーに確認するまで触らない。
+  その規則では決定・実験・教訓の正本は Google Drive の Knowledge Vault(`docs/JOURNEY.md` はプロダクト内の経緯の記録)
 
 - `../auto-trash-navigator/` — ごみ箱・主板・底板の元データ(STL)がある。**読むだけで変更しない**
   (そのプロジェクトの CLAUDE.md により、未コミット変更があり git 操作は禁止)
