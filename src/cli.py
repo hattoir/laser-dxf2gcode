@@ -153,7 +153,7 @@ def cmd_box(a: argparse.Namespace) -> int:
                 "box": f"{W:g} x {D:g} x H{H:g} mm, T={T:g} mm, sheet {si + 1}/{len(sheets)}: {' '.join(names)}"}
         o = process(res.contours, profile, machine, gcode_path, meta=meta, read_warnings=res.warnings,
                     title=f"box {W:g}x{D:g}x{H:g} T{T:g} ({si + 1}/{len(sheets)}) [{profile.name}]",
-                    write_frame=True)
+                    write_frame=True, pass_mode=a.pass_mode)
         bb = o.report.bbox
         print()
         print(f"[材料 {si + 1}/{len(sheets)}] 板: {', '.join(names)}")
@@ -216,6 +216,8 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--gap", type=float, default=4.0, help="板と板の間隔 [mm]")
     b.add_argument("--margin", type=float, default=5.0, help="材料の端からの余白 [mm]")
     b.add_argument("--label", default="", help="前の板の中央に刻印する文字(英大文字・数字)")
+    b.add_argument("--pass-mode", choices=["path", "cycle"], default="path",
+                   help="cycle = 全部の板を 1 周ずつ順に回る(炎が出にくい。箱の板には穴がないので順序の問題もない)")
     b.add_argument("-o", "--output", default="out/box.gcode")
     b.set_defaults(func=cmd_box)
 

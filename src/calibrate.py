@@ -189,7 +189,7 @@ def cmd_coupon(a: argparse.Namespace) -> int:
         table.append(f"  {v.label}: 出力 {v.power:g}%  速度 {v.feed:g} mm/min  {v.passes} パス")
     meta = {"source": dxf_path.name, "profile": f"{base.name} (coupon)", "coupon kerf": f"{base.kerf:.3f}"}
     o = process(res.contours, prof, machine, out, meta=meta, read_warnings=res.warnings,
-                title=f"calibration coupon [{base.name}]", write_frame=True)
+                title=f"calibration coupon [{base.name}]", write_frame=True, pass_mode=a.pass_mode)
     with open(o.report_path, "a", encoding="utf-8") as f:
         f.write("\n".join(table) + "\n")
     from .cli import _print_outcome
@@ -236,7 +236,8 @@ def cmd_kerf(a: argparse.Namespace) -> int:
     prof = Profile(f"{base.name}-kerf", 0.0, None, {"kerf_test": layer})
     meta = {"source": dxf_path.name, "profile": f"{base.name} (kerf test, NO kerf compensation)"}
     o = process(res.contours, prof, machine, out, meta=meta, read_warnings=res.warnings,
-                title=f"kerf test {a.length:g}x{a.width:g} [{base.name}]", write_frame=True)
+                title=f"kerf test {a.length:g}x{a.width:g} [{base.name}]", write_frame=True,
+                pass_mode=a.pass_mode)
     from .cli import _print_outcome
     _print_outcome(o)
     print(f"\n細片 {a.count} 本({a.length:g} × {a.width:g} mm、カーフ補正なし)")
@@ -372,6 +373,8 @@ def add_calibrate_parser(sub) -> None:
     c.add_argument("--origin", type=float, nargs=2, default=[10.0, 10.0], metavar=("X", "Y"))
     c.add_argument("--size", type=float, default=20.0, help="ピースの一辺 [mm]")
     c.add_argument("--no-engrave", action="store_true", help="設定値を刻印しない")
+    c.add_argument("--pass-mode", choices=["path", "cycle"], default="path",
+                   help="cycle = 全部の輪郭を 1 周ずつ順に回る(1 周ごとに冷めるので炎が出にくい。穴のない部品向け)")
     c.add_argument("-o", "--output", default="out/coupon.gcode")
     c.set_defaults(func=cmd_coupon)
 
@@ -383,6 +386,8 @@ def add_calibrate_parser(sub) -> None:
     k.add_argument("--count", type=int, default=1, help="細片の本数(複数本測って平均すると精度が上がる)")
     # テストピース(既定 Y 10〜30)と重ならない位置。同じ端材に続けて切れるようにする
     k.add_argument("--origin", type=float, nargs=2, default=[10.0, 40.0], metavar=("X", "Y"))
+    k.add_argument("--pass-mode", choices=["path", "cycle"], default="path",
+                   help="cycle = 全部の輪郭を 1 周ずつ順に回る(1 周ごとに冷めるので炎が出にくい。穴のない部品向け)")
     k.add_argument("-o", "--output", default="out/kerf_test.gcode")
     k.set_defaults(func=cmd_kerf)
 
