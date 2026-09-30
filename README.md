@@ -547,6 +547,7 @@ src/
 jobs/
   atn_half_scale/     実例: ロボットの主板・底板を 1 枚板・1/2 スケールで生成するスクリプトと DXF
 docs/
+  JOURNEY.md          開発の軌跡(経緯・判断・実機試験・バグ・失敗の記録)
   TROUBLESHOOTING.md  切れない・FIRE で止まるときの原因と対策、検証の順番
   MANUAL_CUT.md       線だけ刻印して手で切る方法
   TASK0_CHECKLIST.md  機械設定の確認項目と結果
