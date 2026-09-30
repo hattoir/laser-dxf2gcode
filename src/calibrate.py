@@ -189,7 +189,7 @@ def cmd_coupon(a: argparse.Namespace) -> int:
         table.append(f"  {v.label}: 出力 {v.power:g}%  速度 {v.feed:g} mm/min  {v.passes} パス")
     meta = {"source": dxf_path.name, "profile": f"{base.name} (coupon)", "coupon kerf": f"{base.kerf:.3f}"}
     o = process(res.contours, prof, machine, out, meta=meta, read_warnings=res.warnings,
-                title=f"calibration coupon [{base.name}]")
+                title=f"calibration coupon [{base.name}]", write_frame=True)
     with open(o.report_path, "a", encoding="utf-8") as f:
         f.write("\n".join(table) + "\n")
     from .cli import _print_outcome
@@ -236,7 +236,7 @@ def cmd_kerf(a: argparse.Namespace) -> int:
     prof = Profile(f"{base.name}-kerf", 0.0, None, {"kerf_test": layer})
     meta = {"source": dxf_path.name, "profile": f"{base.name} (kerf test, NO kerf compensation)"}
     o = process(res.contours, prof, machine, out, meta=meta, read_warnings=res.warnings,
-                title=f"kerf test {a.length:g}x{a.width:g} [{base.name}]")
+                title=f"kerf test {a.length:g}x{a.width:g} [{base.name}]", write_frame=True)
     from .cli import _print_outcome
     _print_outcome(o)
     print(f"\n細片 {a.count} 本({a.length:g} × {a.width:g} mm、カーフ補正なし)")
