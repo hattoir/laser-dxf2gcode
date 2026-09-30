@@ -10,7 +10,7 @@
 
 machine:
   name: "Creality Falcon2"
-  laser_power_w: 22          # 【仮定値】22W と 40W のどちらか未確認。表示用(計算には未使用)
+  laser_power_w: 22          # 【実測値】本体ラベルで 22W を確認(2026-09-30)。表示用(計算には未使用)
 
   # --- 加工エリア -----------------------------------------------------
   # 0 <= X <= x_max, 0 <= Y <= y_max を 1 点でも外れたら G-code を出さずに異常終了する
@@ -44,7 +44,6 @@ machine:
   air_assist_gcode: false    # 【仮定値】M8/M9 制御の可否 未確認
 
 unverified:
-  - laser_power_w
   - park_x
   - park_y
   - air_assist_gcode
