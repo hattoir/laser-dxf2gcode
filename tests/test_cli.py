@@ -146,3 +146,21 @@ def test_default_coupon_and_kerf_strip_do_not_overlap(tmp_path):
 
     a, b = used("c"), used("k")
     assert a[3] < b[1] or b[3] < a[1] or a[2] < b[0] or b[2] < a[0]
+
+
+def test_box_command_generates_five_panels_with_label(tmp_path):
+    out = tmp_path / "b.gcode"
+    assert main(["box", "--size", "80", "80", "60", "--thickness", "2.5", "-p", "mdf_2_5mm",
+                 "--label", "ATN", "-o", str(out)]) == 0
+    text = out.read_text()
+    report = (tmp_path / "b_report.txt").read_text(encoding="utf-8")
+    assert "部品数(外形)  : 5" in report and "穴の数        : 0" in report
+    roles = [l.split("role=")[1].split()[0] for l in text.splitlines() if "role=" in l]
+    assert roles[0] == "mark" and roles[-1] == "outer"     # 刻印が先、外形が後
+
+
+def test_box_splits_across_small_sheets(tmp_path):
+    out = tmp_path / "s.gcode"
+    assert main(["box", "--size", "100", "100", "74", "--thickness", "2.5", "-p", "mdf_2_5mm",
+                 "--sheet", "220", "190", "-o", str(out)]) == 0
+    assert (tmp_path / "s_1.gcode").exists() and (tmp_path / "s_2.gcode").exists()

@@ -18,6 +18,7 @@ from .config import Profile, load_machine, load_profile
 from .dxf_reader import DEFAULT_CHORD_TOL, DEFAULT_JOIN_TOL, Contour, read_dxf
 from .errors import ConfigError, Dxf2GcodeError, WorkAreaError
 from .pipeline import Outcome, process, transform_contours
+from .preview import fmt_duration
 
 EXIT_AREA = 2
 EXIT_ERROR = 3
@@ -107,6 +108,69 @@ def cmd_convert(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_box(a: argparse.Namespace) -> int:
+    """上面が開いた組み木の箱(ごみ箱・小物入れ)を生成して G-code まで作る。"""
+    import ezdxf
+
+    from .boxgen import build_panels, pack
+    from .calibrate import text_polylines, text_width
+
+    machine = load_machine(a.machine)
+    profile = load_profile(a.profile)
+    W, D, H = a.size
+    T = a.thickness
+    finger = a.finger or max(3 * T, 6.0)
+    sheet_w, sheet_h = a.sheet if a.sheet else (machine.x_max, machine.y_max)
+    if sheet_w > machine.x_max or sheet_h > machine.y_max:
+        raise ConfigError(f"材料 {sheet_w:g}×{sheet_h:g}mm が加工エリア {machine.x_max:g}×{machine.y_max:g}mm より大きいです")
+    panels = build_panels(W, D, H, T, finger)
+    placed = pack(panels, sheet_w, sheet_h, gap=a.gap, margin=a.margin)
+    sheets = sorted({p.sheet for p in placed})
+    out = Path(a.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"箱: 外寸 {W:g} × {D:g} × 高さ {H:g} mm / 板厚 {T:g} mm / 指の幅 目安 {finger:g} mm")
+    for si in sheets:
+        suffix = "" if len(sheets) == 1 else f"_{si + 1}"
+        dxf_path = out.with_name(out.stem + suffix + ".dxf")
+        gcode_path = out.with_name(out.stem + suffix + ".gcode")
+        doc = ezdxf.new("R2010")
+        doc.header["$INSUNITS"] = 4
+        msp = doc.modelspace()
+        names = []
+        for pl in (p for p in placed if p.sheet == si):
+            msp.add_lwpolyline(pl.poly(), close=True, dxfattribs={"layer": "cut"})
+            names.append(pl.panel.name)
+            if a.label and pl.panel.name == "front":
+                h = min(12.0, H * 0.25, 0.7 * W * 6.0 / (len(a.label) * 6.0 - 2.0))
+                u = pl.x + (W - text_width(a.label, h)) / 2
+                v = pl.y + (H + T) / 2 - h / 2
+                for stroke in text_polylines(a.label, u, v, h):
+                    msp.add_lwpolyline(stroke, dxfattribs={"layer": "engrave"})
+        doc.saveas(dxf_path)
+        res = read_dxf(dxf_path)
+        meta = {"source": dxf_path.name, "profile": profile.name,
+                "box": f"{W:g} x {D:g} x H{H:g} mm, T={T:g} mm, sheet {si + 1}/{len(sheets)}: {' '.join(names)}"}
+        o = process(res.contours, profile, machine, gcode_path, meta=meta, read_warnings=res.warnings,
+                    title=f"box {W:g}x{D:g}x{H:g} T{T:g} ({si + 1}/{len(sheets)}) [{profile.name}]",
+                    write_frame=True)
+        bb = o.report.bbox
+        print()
+        print(f"[材料 {si + 1}/{len(sheets)}] 板: {', '.join(names)}")
+        print(f"  使用範囲 {bb[2] - bb[0]:.0f} × {bb[3] - bb[1]:.0f} mm / パス総数 {o.report.burns}"
+              f" / 推定 {fmt_duration(o.report.time.total_s)}")
+        print(f"  G-code: {o.gcode_path}")
+        print(f"  拡大図: {o.detail_path}")
+        print(f"  枠確認: {o.frame_path}")
+        for w in o.warnings:
+            print(f"  ! {w}")
+    print()
+    print("組み立て: 前後の板で左右を挟み、底をはめてから木工用ボンドで接着。")
+    print("板厚は必ずノギスで測った値を --thickness に入れること(表示とずれると指の深さが合わない)。")
+    print(">>> SVG を目視確認してから流してください。必ず端材でテストしてから本番材を。<<<")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="dxf2gcode", description="Fusion 360 DXF → GRBL G-code(Creality Falcon2)")
     ap.add_argument("-m", "--machine", default=None, help="機械設定 YAML(既定: machine.yaml)")
@@ -140,6 +204,21 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--frame", action="store_true", help="使用範囲をレーザー OFF でなぞる G-code も出力")
     c.set_defaults(func=cmd_convert)
 
+    b = sub.add_parser("box", help="上面が開いた組み木の箱(ごみ箱・小物入れ)を生成")
+    b.add_argument("--size", type=float, nargs=3, required=True, metavar=("W", "D", "H"),
+                   help="外寸 幅 奥行き 高さ [mm]")
+    b.add_argument("--thickness", type=float, required=True,
+                   help="板厚 [mm]。必ずノギスで測った実際の値を入れる")
+    b.add_argument("-p", "--profile", default="mdf_5mm")
+    b.add_argument("--finger", type=float, help="指の幅の目安 [mm](既定: 板厚の 3 倍、最小 6)")
+    b.add_argument("--sheet", type=float, nargs=2, metavar=("W", "H"),
+                   help="材料の大きさ [mm](既定: 加工エリア全体)。入りきらなければ複数枚に分ける")
+    b.add_argument("--gap", type=float, default=4.0, help="板と板の間隔 [mm]")
+    b.add_argument("--margin", type=float, default=5.0, help="材料の端からの余白 [mm]")
+    b.add_argument("--label", default="", help="前の板の中央に刻印する文字(英大文字・数字)")
+    b.add_argument("-o", "--output", default="out/box.gcode")
+    b.set_defaults(func=cmd_box)
+
     from .calibrate import add_calibrate_parser
     add_calibrate_parser(sub)
     return ap
@@ -152,7 +231,7 @@ def main(argv: list[str] | None = None) -> int:
         except AttributeError:
             pass
     args = build_parser().parse_args(argv)
-    generates = args.cmd == "convert" or getattr(args, "cal_cmd", None) in ("coupon", "kerf")
+    generates = args.cmd in ("convert", "box") or getattr(args, "cal_cmd", None) in ("coupon", "kerf")
     try:
         return args.func(args)
     except WorkAreaError as exc:
