@@ -31,3 +31,11 @@ mdf_2_5mm:
       kerf_compensation: false
       order: 0
       air_assist: false
+    score:                   # ケガキ線: 手で切るときの案内溝(貫通しない)。--mark-only で使う
+      power: 40              # 【仮定値】[%]
+      feed: 1500             # 【仮定値】[mm/min]
+      passes: 1              # 【仮定値】
+      through_cut: false
+      kerf_compensation: false
+      order: 1
+      air_assist: true

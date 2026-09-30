@@ -112,10 +112,11 @@ def split_chains(parsed: ParsedGcode) -> list[list[Motion]]:
 class TimeEstimate:
     cut_s: float
     travel_s: float
+    dwell_s: float = 0.0   # 冷却の待ち(G4)
 
     @property
     def total_s(self) -> float:
-        return self.cut_s + self.travel_s
+        return self.cut_s + self.travel_s + self.dwell_s
 
 
 def estimate_time(parsed: ParsedGcode, machine: Machine) -> TimeEstimate:
@@ -128,7 +129,7 @@ def estimate_time(parsed: ParsedGcode, machine: Machine) -> TimeEstimate:
             travel += t
         else:
             cut += t
-    return TimeEstimate(cut, travel)
+    return TimeEstimate(cut, travel, sum(sec for _, sec in parsed.dwells))
 
 
 def fmt_duration(s: float) -> str:
@@ -356,7 +357,8 @@ def build_report(text: str, parsed: ParsedGcode, machine: Machine, plan: Plan,
     L.append(f"パス総数      : {len(burns)}(輪郭 × パス回数 = 発振 M4〜M5 の回数)")
     L.append(f"切断距離 合計 : {cut_len:,.1f} mm(パス回数込み)")
     L.append(f"移動距離 合計 : {travel_len:,.1f} mm(G0 早送り)")
-    L.append(f"推定所要時間  : {fmt_duration(t.total_s)}(切断 {fmt_duration(t.cut_s)} + 移動 {fmt_duration(t.travel_s)})")
+    dwell = f" + 冷却待ち {fmt_duration(t.dwell_s)}" if t.dwell_s else ""
+    L.append(f"推定所要時間  : {fmt_duration(t.total_s)}(切断 {fmt_duration(t.cut_s)} + 移動 {fmt_duration(t.travel_s)}{dwell})")
     L.append(f"                ※ 送り速度・加速度 {machine.accel_x:g}/{machine.accel_y:g} mm/s²・"
              f"ジャンクション偏差 {machine.junction_deviation:g} mm からの概算")
     if bb:

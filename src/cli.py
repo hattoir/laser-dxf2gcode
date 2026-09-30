@@ -64,6 +64,11 @@ def cmd_convert(a: argparse.Namespace) -> int:
     src = Path(a.input[0])
 
     as_layer = _resolve_layer(profile, a.as_layer) if a.as_layer else None
+    if a.mark_only:
+        # 切らずに線を浅く刻印するだけ。手で切るときの案内(ケガキ線)にする
+        as_layer = _resolve_layer(profile, a.mark_layer)
+        if profile.layers[as_layer].through_cut:
+            raise ConfigError(f"--mark-only の層 '{as_layer}' は through_cut: true です(貫通切断になってしまう)")
     contours: list[Contour] = []
     warnings: list[str] = []
     for path in a.input:
@@ -75,7 +80,9 @@ def cmd_convert(a: argparse.Namespace) -> int:
     # まとめて読み込めば、入れ子判定も切断順序もファイルの区別なく効く。
     meta = {"source": names[0] if len(names) == 1 else f"{len(names)} files: {', '.join(names)}",
             "profile": profile.name}
-    if as_layer:
+    if a.mark_only:
+        meta["mode"] = f"MARK ONLY(切らずに線だけ刻印。層 '{as_layer}')"
+    elif as_layer:
         meta["source layer"] = f"全体を '{as_layer}' として加工"
 
     if a.engrave:
@@ -101,7 +108,7 @@ def cmd_convert(a: argparse.Namespace) -> int:
     if a.lead_in:
         meta["lead-in"] = f"{a.lead_in:g} mm"
     o = process(contours, profile, machine, out, kerf=a.kerf, lead_in=a.lead_in, pass_mode=a.pass_mode,
-                min_gap=a.min_gap,
+                min_gap=a.min_gap, cooldown=a.cooldown,
                 meta=meta, read_warnings=warnings, title=f"{src.name}  [{profile.name}]",
                 write_frame=a.frame)
     _print_outcome(o)
@@ -112,7 +119,7 @@ def cmd_box(a: argparse.Namespace) -> int:
     """上面が開いた組み木の箱(ごみ箱・小物入れ)を生成して G-code まで作る。"""
     import ezdxf
 
-    from .boxgen import build_panels, pack
+    from .boxgen import build_butt_panels, build_panels, pack
     from .calibrate import text_polylines, text_width
 
     machine = load_machine(a.machine)
@@ -123,13 +130,22 @@ def cmd_box(a: argparse.Namespace) -> int:
     sheet_w, sheet_h = a.sheet if a.sheet else (machine.x_max, machine.y_max)
     if sheet_w > machine.x_max or sheet_h > machine.y_max:
         raise ConfigError(f"材料 {sheet_w:g}×{sheet_h:g}mm が加工エリア {machine.x_max:g}×{machine.y_max:g}mm より大きいです")
-    panels = build_panels(W, D, H, T, finger)
+    panels = build_butt_panels(W, D, H, T) if a.joint == "butt" else build_panels(W, D, H, T, finger)
+    cut_layer = "cut"
+    if a.mark_only:
+        cut_layer = _resolve_layer(profile, a.mark_layer)
+        if profile.layers[cut_layer].through_cut:
+            raise ConfigError(f"--mark-only の層 '{cut_layer}' は through_cut: true です")
     placed = pack(panels, sheet_w, sheet_h, gap=a.gap, margin=a.margin)
     sheets = sorted({p.sheet for p in placed})
     out = Path(a.output)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"箱: 外寸 {W:g} × {D:g} × 高さ {H:g} mm / 板厚 {T:g} mm / 指の幅 目安 {finger:g} mm")
+    joint = "突き付け(長方形のみ)" if a.joint == "butt" else f"組み木(指の幅 目安 {finger:g} mm)"
+    mode = " / 【切らずに線だけ刻印 = 手で切る用】" if a.mark_only else ""
+    print(f"箱: 外寸 {W:g} × {D:g} × 高さ {H:g} mm / 板厚 {T:g} mm / {joint}{mode}")
+    for pn in panels:
+        print(f"  {pn.name:<6} {pn.width:g} × {pn.height:g} mm")
     for si in sheets:
         suffix = "" if len(sheets) == 1 else f"_{si + 1}"
         dxf_path = out.with_name(out.stem + suffix + ".dxf")
@@ -139,7 +155,7 @@ def cmd_box(a: argparse.Namespace) -> int:
         msp = doc.modelspace()
         names = []
         for pl in (p for p in placed if p.sheet == si):
-            msp.add_lwpolyline(pl.poly(), close=True, dxfattribs={"layer": "cut"})
+            msp.add_lwpolyline(pl.poly(), close=True, dxfattribs={"layer": cut_layer})
             names.append(pl.panel.name)
             if a.label and pl.panel.name == "front":
                 h = min(12.0, H * 0.25, 0.7 * W * 6.0 / (len(a.label) * 6.0 - 2.0))
@@ -153,7 +169,7 @@ def cmd_box(a: argparse.Namespace) -> int:
                 "box": f"{W:g} x {D:g} x H{H:g} mm, T={T:g} mm, sheet {si + 1}/{len(sheets)}: {' '.join(names)}"}
         o = process(res.contours, profile, machine, gcode_path, meta=meta, read_warnings=res.warnings,
                     title=f"box {W:g}x{D:g}x{H:g} T{T:g} ({si + 1}/{len(sheets)}) [{profile.name}]",
-                    write_frame=True, pass_mode=a.pass_mode)
+                    write_frame=True, pass_mode=a.pass_mode, cooldown=a.cooldown)
         bb = o.report.bbox
         print()
         print(f"[材料 {si + 1}/{len(sheets)}] 板: {', '.join(names)}")
@@ -165,7 +181,12 @@ def cmd_box(a: argparse.Namespace) -> int:
         for w in o.warnings:
             print(f"  ! {w}")
     print()
-    print("組み立て: 前後の板で左右を挟み、底をはめてから木工用ボンドで接着。")
+    if a.joint == "butt":
+        print("組み立て: 底の上に前後の板を立て、その間に左右の板を挟んで木工用ボンドで接着。")
+    else:
+        print("組み立て: 前後の板で左右を挟み、底をはめてから木工用ボンドで接着。")
+    if a.mark_only:
+        print("これは刻印だけのデータです。線に沿って手で切ってください(docs/MANUAL_CUT.md)。")
     print("板厚は必ずノギスで測った値を --thickness に入れること(表示とずれると指の深さが合わない)。")
     print(">>> SVG を目視確認してから流してください。必ず端材でテストしてから本番材を。<<<")
     return 0
@@ -201,6 +222,11 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--no-return-home", dest="return_home", action="store_false", help="末尾の原点復帰をしない")
     c.add_argument("--min-gap", type=float, default=0.5,
                    help="切断線どうしがこの距離 [mm] より近ければ警告(既定 0.5、0 で無効)")
+    c.add_argument("--cooldown", type=float, default=0.0,
+                   help="発振のたびにレーザー OFF で待つ秒数(熱がこもって炎が出るのを防ぐ。既定 0)")
+    c.add_argument("--mark-only", action="store_true",
+                   help="切らずに、切る線を浅く刻印するだけにする(手で切るときの案内線)")
+    c.add_argument("--mark-layer", default="score", help="--mark-only で使う層(既定 score)")
     c.add_argument("--frame", action="store_true", help="使用範囲をレーザー OFF でなぞる G-code も出力")
     c.set_defaults(func=cmd_convert)
 
@@ -218,6 +244,12 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--label", default="", help="前の板の中央に刻印する文字(英大文字・数字)")
     b.add_argument("--pass-mode", choices=["path", "cycle"], default="path",
                    help="cycle = 全部の板を 1 周ずつ順に回る(炎が出にくい。箱の板には穴がないので順序の問題もない)")
+    b.add_argument("--joint", choices=["finger", "butt"], default="finger",
+                   help="finger = 組み木(レーザーで切る用)/ butt = 突き付け(ただの長方形。手で切る用)")
+    b.add_argument("--cooldown", type=float, default=0.0, help="発振のたびにレーザー OFF で待つ秒数")
+    b.add_argument("--mark-only", action="store_true",
+                   help="切らずに、切る線を浅く刻印するだけにする(手で切るときの案内線)")
+    b.add_argument("--mark-layer", default="score", help="--mark-only で使う層(既定 score)")
     b.add_argument("-o", "--output", default="out/box.gcode")
     b.set_defaults(func=cmd_box)
 
@@ -233,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
         except AttributeError:
             pass
     args = build_parser().parse_args(argv)
-    generates = args.cmd in ("convert", "box") or getattr(args, "cal_cmd", None) in ("coupon", "kerf")
+    generates = args.cmd in ("convert", "box") or getattr(args, "cal_cmd", None) in ("coupon", "kerf", "ladder")
     try:
         return args.func(args)
     except WorkAreaError as exc:

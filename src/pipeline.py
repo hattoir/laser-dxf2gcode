@@ -91,7 +91,7 @@ def _write_atomic(path: Path, text: str) -> None:
 def process(contours: Sequence[Contour], profile: Profile, machine: Machine, out_gcode: Path, *,
             kerf: float | None = None, lead_in: float = 0.0, pass_mode: str = "path", min_gap: float = 0.5,
             meta: dict[str, str] | None = None, read_warnings: Sequence[str] = (),
-            title: str = "", write_frame: bool = False) -> Outcome:
+            title: str = "", write_frame: bool = False, cooldown: float = 0.0) -> Outcome:
     out_gcode = Path(out_gcode)
     out_gcode.parent.mkdir(parents=True, exist_ok=True)
     gcode_path, svg_path, report_path = output_paths(out_gcode)
@@ -103,7 +103,7 @@ def process(contours: Sequence[Contour], profile: Profile, machine: Machine, out
                               bounds=(0.0, 0.0, machine.x_max, machine.y_max), min_gap=min_gap)
         meta.setdefault("profile", profile.name)
         meta["kerf"] = f"{plan.kerf:.3f} mm"
-        result = generate_gcode(plan, machine, pass_mode=pass_mode, meta=meta)
+        result = generate_gcode(plan, machine, pass_mode=pass_mode, meta=meta, cooldown=cooldown)
         parsed = verify_gcode(result.text, machine)
         warnings = list(read_warnings) + plan.warnings + result.warnings
         report = build_report(result.text, parsed, machine, plan, meta, warnings)

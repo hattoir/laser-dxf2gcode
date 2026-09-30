@@ -94,3 +94,15 @@ def test_pack_uses_multiple_sheets_when_needed():
     for pl in small:  # 余白の内側に収まる
         x0, y0, x1, y1 = bbox(pl.poly())
         assert x0 >= 5 - 1e-9 and y0 >= 5 - 1e-9 and x1 <= 215 + 1e-9 and y1 <= 185 + 1e-9
+
+
+@pytest.mark.parametrize("W,D,H,T", [(100, 100, 74, 2.5), (120, 80, 60, 6.0)])
+def test_butt_joint_panels_are_rectangles_with_same_outer_size(W, D, H, T):
+    from src.boxgen import build_butt_panels
+    ps = {p.name: p for p in build_butt_panels(W, D, H, T)}
+    assert (ps["bottom"].width, ps["bottom"].height) == (W, D)
+    assert (ps["front"].width, ps["front"].height) == (W, H - T)
+    assert (ps["left"].width, ps["left"].height) == (D - 2 * T, H - T)
+    assert all(len(p.poly) == 4 for p in ps.values())
+    vol = sum(abs(signed_area(p.poly)) * T for p in ps.values())
+    assert vol == pytest.approx(W * D * H - (W - 2 * T) * (D - 2 * T) * (H - T))   # 殻の体積と一致

@@ -23,9 +23,10 @@ from .geometry import Point
 from .toolpath import CutPath, Plan
 
 COORD_DECIMALS = 3
-ALLOWED_G = {0, 1, 21, 90, 94}
+ALLOWED_G = {0, 1, 4, 21, 90, 94}   # G4 = 待ち(冷却用。レーザー OFF のときだけ許可)
 ALLOWED_M = {4, 5, 8, 9}
 PASS_MODES = ("path", "cycle")
+COOLDOWN_MIN_POWER = 50.0   # [%] これ以上の出力で焼いた後にだけ冷却待ちを入れる
 
 
 def fmt(v: float) -> str:
@@ -119,7 +120,7 @@ class GcodeResult:
 
 
 def generate_gcode(plan: Plan, machine: Machine, *, pass_mode: str = "path",
-                   meta: dict[str, str] | None = None) -> GcodeResult:
+                   meta: dict[str, str] | None = None, cooldown: float = 0.0) -> GcodeResult:
     """Plan から G-code を作る。エリア外の座標があれば WorkAreaError。
 
     pass_mode:
@@ -130,6 +131,10 @@ def generate_gcode(plan: Plan, machine: Machine, *, pass_mode: str = "path",
     """
     if pass_mode not in PASS_MODES:
         raise ValueError(f"pass_mode は {PASS_MODES} のいずれか")
+    # cooldown: 発振が終わるたび(M5 の後)にレーザー OFF のまま待つ秒数。
+    # 熱がこもって炎が出るのを防ぐ。0 で待たない
+    if cooldown < 0 or cooldown > 120:
+        raise ValueError("cooldown は 0〜120 秒にしてください")
     park = (machine.park_x, machine.park_y)
     check_work_area(plan.paths, machine, [(park, "待機位置 park_x/park_y")])
 
@@ -145,7 +150,7 @@ def generate_gcode(plan: Plan, machine: Machine, *, pass_mode: str = "path",
                              f"S max: {machine.s_max}"))
     if "kerf" not in meta:
         out.append(f"; kerf: {plan.kerf:.3f} mm")
-    out.append(f"; pass_mode: {pass_mode}")
+    out.append(f"; pass_mode: {pass_mode}  cooldown: {cooldown:g} s")
     if machine.unverified:
         out.append(ascii_comment("; WARNING unverified machine settings: " + ", ".join(machine.unverified)))
     out.append("; !!! Check the SVG preview before running. Test on scrap material first. !!!")
@@ -173,6 +178,7 @@ def generate_gcode(plan: Plan, machine: Machine, *, pass_mode: str = "path",
                     jobs.append((p, k, settings[k]))
 
     air_on = False
+    n_done = 0
     index = {id(p): i for i, p in enumerate(plan.paths)}
     warned_feed = set()
     for p, k, ps in jobs:
@@ -206,6 +212,10 @@ def generate_gcode(plan: Plan, machine: Machine, *, pass_mode: str = "path",
             else:
                 out.append(f"G1 X{fmt(x)} Y{fmt(y)}")
         out.append("M5")
+        n_done += 1
+        # 待つのは切断レベルの出力で焼いた後だけ(刻印の 1 画ごとに待つと無駄に長くなる)
+        if cooldown > 0 and n_done < len(jobs) and ps.power >= COOLDOWN_MIN_POWER:
+            out.append(f"G4 P{cooldown:g}")
 
     if use_air and air_on:
         out.append("M9")
@@ -243,6 +253,7 @@ class Motion:
 class ParsedGcode:
     motions: list[Motion]
     commands: list[tuple[int, str]]   # (行番号, コメントを除いた行)
+    dwells: list[tuple[int, float]] = field(default_factory=list)   # (行番号, 待ち秒数)
 
 
 def strip_comment(line: str) -> str:
@@ -254,6 +265,7 @@ def parse_gcode(text: str) -> ParsedGcode:
     """このツールが出す範囲の G-code を読む。未対応の G/M があれば GcodeSafetyError。"""
     motions: list[Motion] = []
     commands: list[tuple[int, str]] = []
+    dwells: list[tuple[int, float]] = []
     pos: Point = (0.0, 0.0)
     feed = 0.0
     s = 0
@@ -270,6 +282,8 @@ def parse_gcode(text: str) -> ParsedGcode:
             raise GcodeSafetyError(f"行 {no}: 解釈できない文字列 '{leftover}': {raw}")
         x = y = None
         this_motion = None
+        is_dwell = False
+        dwell_s = None
         for letter, val in words:
             v = float(val)
             if letter == "G":
@@ -278,6 +292,8 @@ def parse_gcode(text: str) -> ParsedGcode:
                     raise GcodeSafetyError(f"行 {no}: 許可していない G コード G{val}: {raw}")
                 if g in (0, 1):
                     this_motion = f"G{g}"
+                elif g == 4:
+                    is_dwell = True
             elif letter == "M":
                 m = int(v)
                 if m not in ALLOWED_M or m != v:
@@ -294,8 +310,18 @@ def parse_gcode(text: str) -> ParsedGcode:
                 x = v
             elif letter == "Y":
                 y = v
+            elif letter == "P":
+                dwell_s = v
             else:
                 raise GcodeSafetyError(f"行 {no}: 許可していないワード {letter}{val}: {raw}")
+        if is_dwell or dwell_s is not None:
+            if not is_dwell or dwell_s is None or x is not None or y is not None:
+                raise GcodeSafetyError(f"行 {no}: G4 は G4 P<秒> の形だけ許可: {raw}")
+            if laser_on:
+                raise GcodeSafetyError(f"行 {no}: 発振中(M4 のまま)の G4(待ち)は禁止。止まったまま焼き続ける: {raw}")
+            if not (0 <= dwell_s <= 120):
+                raise GcodeSafetyError(f"行 {no}: G4 の待ち時間が 0〜120 秒の範囲外: {raw}")
+            dwells.append((no, dwell_s))
         if this_motion:
             motion_mode = this_motion
         if x is not None or y is not None:
@@ -304,7 +330,7 @@ def parse_gcode(text: str) -> ParsedGcode:
             new = (pos[0] if x is None else x, pos[1] if y is None else y)
             motions.append(Motion(motion_mode, pos, new, feed, s, laser_on, no))
             pos = new
-    return ParsedGcode(motions, commands)
+    return ParsedGcode(motions, commands, dwells)
 
 
 def verify_gcode(text: str, machine: Machine) -> ParsedGcode:

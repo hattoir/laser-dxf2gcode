@@ -189,7 +189,8 @@ def cmd_coupon(a: argparse.Namespace) -> int:
         table.append(f"  {v.label}: 出力 {v.power:g}%  速度 {v.feed:g} mm/min  {v.passes} パス")
     meta = {"source": dxf_path.name, "profile": f"{base.name} (coupon)", "coupon kerf": f"{base.kerf:.3f}"}
     o = process(res.contours, prof, machine, out, meta=meta, read_warnings=res.warnings,
-                title=f"calibration coupon [{base.name}]", write_frame=True, pass_mode=a.pass_mode)
+                title=f"calibration coupon [{base.name}]", write_frame=True, pass_mode=a.pass_mode,
+                cooldown=a.cooldown)
     with open(o.report_path, "a", encoding="utf-8") as f:
         f.write("\n".join(table) + "\n")
     from .cli import _print_outcome
@@ -237,12 +238,96 @@ def cmd_kerf(a: argparse.Namespace) -> int:
     meta = {"source": dxf_path.name, "profile": f"{base.name} (kerf test, NO kerf compensation)"}
     o = process(res.contours, prof, machine, out, meta=meta, read_warnings=res.warnings,
                 title=f"kerf test {a.length:g}x{a.width:g} [{base.name}]", write_frame=True,
-                pass_mode=a.pass_mode)
+                pass_mode=a.pass_mode, cooldown=a.cooldown)
     from .cli import _print_outcome
     _print_outcome(o)
     print(f"\n細片 {a.count} 本({a.length:g} × {a.width:g} mm、カーフ補正なし)")
     print("  細片の幅 w を数か所ノギスで測り、平均を取る。カーフ k = 設計幅 - w")
     print(f"  書き戻し: calibrate apply-kerf -p {base.name} --strip-width w --nominal {a.width:g}")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# 条件の一覧試験(ラダー): 速度 × 周回 の組み合わせを短い線で一度に試す
+# --------------------------------------------------------------------------
+
+# シナ(バスウッド)を 22W で 1 周で切れる厚さの目安: 厚さ[mm] ≈ BASSWOOD_DV / 速度[mm/min]
+# Creality 公式の Falcon2 22W 切断条件(2mm/700, 3mm/550, 5mm/400, 8mm/240)から求めた値。
+# MDF はこれより切りにくい。ラダーの結果と比べて「シナの何倍切りにくいか」を知る目安に使う。
+BASSWOOD_DV = 1700.0
+
+
+def _floats(spec: str, what: str) -> list[float]:
+    try:
+        vals = [float(x) for x in spec.split(",") if x.strip()]
+    except ValueError as exc:
+        raise Dxf2GcodeError(f"{what} はカンマ区切りの数値で指定してください: {spec!r}") from exc
+    if not vals or any(v <= 0 for v in vals):
+        raise Dxf2GcodeError(f"{what} は正の数値を 1 つ以上指定してください")
+    return vals
+
+
+def cmd_ladder(a: argparse.Namespace) -> int:
+    machine = load_machine(a.machine)
+    base = load_profile(a.profile)
+    speeds = _floats(a.speeds, "--speeds")
+    passes = [int(v) for v in _floats(a.passes, "--passes")]
+    if len(speeds) > 8 or len(passes) > 5:
+        raise Dxf2GcodeError("速度は 8 種類まで、周回は 5 種類までにしてください")
+    L, pitch, gap, lh = a.length, a.pitch, 5.0, 2.5
+    ox, oy = a.origin
+    row_labels = [f"F{v:g}" for v in speeds]
+    col_labels = [f"N{n}" for n in passes]
+    label_w = max(text_width(s, lh) for s in row_labels)
+    x_first = ox + label_w + 3.0
+
+    out = Path(a.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    dxf_path = out.with_suffix(".dxf")
+    doc = ezdxf.new("R2010")
+    doc.header["$INSUNITS"] = 4
+    msp = doc.modelspace()
+    layers: dict[str, LayerSettings] = {}
+    for i, v in enumerate(speeds):
+        y = oy + i * pitch
+        for pl in text_polylines(row_labels[i], ox, y - lh / 2, lh):
+            msp.add_lwpolyline(pl, dxfattribs={"layer": "engrave"})
+        for j, n in enumerate(passes):
+            name = f"c{i}_{j}"
+            x0 = x_first + j * (L + gap)
+            msp.add_line((x0, y), (x0 + L, y), dxfattribs={"layer": name})
+            # 貫通を狙う線だが、部品を切り出すわけではないので「刻印扱い」(カーフ補正なし・順序固定)
+            layers[name] = LayerSettings(name, power=a.power, feed=v, passes=n, through_cut=False,
+                                         kerf_compensation=False, order=10 + i * len(passes) + j,
+                                         air_assist=True)
+    y_top = oy + (len(speeds) - 1) * pitch + 3.0
+    for j, s in enumerate(col_labels):
+        x0 = x_first + j * (L + gap)
+        for pl in text_polylines(s, x0 + (L - text_width(s, lh)) / 2, y_top, lh):
+            msp.add_lwpolyline(pl, dxfattribs={"layer": "engrave"})
+    doc.saveas(dxf_path)
+
+    layers["engrave"] = base.layers.get("engrave") or LayerSettings("engrave", 30, 3000, 1, False, False, 0, False)
+    prof = Profile(f"{base.name}-ladder", 0.0, None, layers)
+    prof.validate()
+    res = read_dxf(dxf_path)
+    meta = {"source": dxf_path.name, "profile": f"{base.name} (ladder: speed x passes, power {a.power:g}%)"}
+    o = process(res.contours, prof, machine, out, meta=meta, read_warnings=res.warnings,
+                title=f"ladder [{base.name}]", write_frame=True, pass_mode=a.pass_mode, cooldown=a.cooldown)
+
+    table = [f"条件の一覧(出力 {a.power:g}%。行 = 速度 F[mm/min]、列 = 周回 N。下の行ほど上に刻印した順)",
+             "  各マス: エネルギー指標(周回÷速度×1000)/ シナ材なら 1 周換算で切れる厚さの目安[mm]",
+             "  " + " " * 8 + "".join(f"{c:>16}" for c in col_labels)]
+    for i, v in enumerate(speeds):
+        cells = "".join(f"{n / v * 1000:>8.1f} /{BASSWOOD_DV * n / v:>5.1f}" for n in passes)
+        table.append(f"  {row_labels[i]:<8}{cells}")
+    table += ["読み方: 板を光にかざし、光が漏れる線(貫通)のうち、エネルギー指標が一番小さいものを探す。",
+              "        その条件に 2〜3 割の余裕(周回を足す)を持たせて calibrate apply-cut で書き戻す。"]
+    with open(o.report_path, "a", encoding="utf-8") as f:
+        f.write("\n".join(table) + "\n")
+    from .cli import _print_outcome
+    _print_outcome(o)
+    print("\n".join(table))
     return 0
 
 
@@ -375,6 +460,7 @@ def add_calibrate_parser(sub) -> None:
     c.add_argument("--no-engrave", action="store_true", help="設定値を刻印しない")
     c.add_argument("--pass-mode", choices=["path", "cycle"], default="path",
                    help="cycle = 全部の輪郭を 1 周ずつ順に回る(1 周ごとに冷めるので炎が出にくい。穴のない部品向け)")
+    c.add_argument("--cooldown", type=float, default=0.0, help="発振のたびにレーザー OFF で待つ秒数")
     c.add_argument("-o", "--output", default="out/coupon.gcode")
     c.set_defaults(func=cmd_coupon)
 
@@ -388,8 +474,23 @@ def add_calibrate_parser(sub) -> None:
     k.add_argument("--origin", type=float, nargs=2, default=[10.0, 40.0], metavar=("X", "Y"))
     k.add_argument("--pass-mode", choices=["path", "cycle"], default="path",
                    help="cycle = 全部の輪郭を 1 周ずつ順に回る(1 周ごとに冷めるので炎が出にくい。穴のない部品向け)")
+    k.add_argument("--cooldown", type=float, default=0.0, help="発振のたびにレーザー OFF で待つ秒数")
     k.add_argument("-o", "--output", default="out/kerf_test.gcode")
     k.set_defaults(func=cmd_kerf)
+
+    ld = cs.add_parser("ladder", help="速度 × 周回 の組み合わせを短い線で一度に試し、貫通する条件を探す")
+    ld.add_argument("-p", "--profile", default="mdf_5mm")
+    ld.add_argument("--speeds", default="1500,1000,700,500,350", help="速度 [mm/min] をカンマ区切り(最大 8)")
+    ld.add_argument("--passes", default="1,2,4", help="周回数をカンマ区切り(最大 5)")
+    ld.add_argument("--power", type=float, default=100.0, help="出力 [%%]")
+    ld.add_argument("--length", type=float, default=15.0, help="線の長さ [mm]")
+    ld.add_argument("--pitch", type=float, default=6.0, help="線と線の間隔 [mm]")
+    ld.add_argument("--origin", type=float, nargs=2, default=[10.0, 10.0], metavar=("X", "Y"))
+    ld.add_argument("--pass-mode", choices=["path", "cycle"], default="cycle",
+                    help="既定 cycle = 全部の線を 1 周ずつ順に回る(熱がこもりにくい)")
+    ld.add_argument("--cooldown", type=float, default=0.0, help="発振のたびにレーザー OFF で待つ秒数")
+    ld.add_argument("-o", "--output", default="out/ladder.gcode")
+    ld.set_defaults(func=cmd_ladder)
 
     ak = cs.add_parser("apply-kerf", help="測定値からカーフを逆算してプロファイルに書き戻す")
     ak.add_argument("-p", "--profile", default="mdf_5mm")

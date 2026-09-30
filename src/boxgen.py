@@ -73,6 +73,25 @@ def _subtract(width: float, height: float, holes: list[list[Point]]) -> list[Poi
     return p if signed_area(p) > 0 else p[::-1]
 
 
+def build_butt_panels(W: float, D: float, H: float, T: float) -> list[Panel]:
+    """突き付け(組み木なし)の箱。5 枚ともただの長方形なので、手で切る場合に向く。
+
+    底の上に壁を載せ、左右の板は前後の板の間に挟む。外寸は W × D × H のまま。
+        底      W × D
+        前・後  W × (H - T)
+        左・右  (D - 2T) × (H - T)
+    """
+    if T <= 0:
+        raise Dxf2GcodeError("板厚は正の値にしてください")
+    if min(W, D) <= 4 * T or H <= 2 * T:
+        raise Dxf2GcodeError("箱が板厚に対して小さすぎます")
+    h = H - T
+    return [Panel("front", W, h, _rect(0, 0, W, h)), Panel("back", W, h, _rect(0, 0, W, h)),
+            Panel("left", D - 2 * T, h, _rect(0, 0, D - 2 * T, h)),
+            Panel("right", D - 2 * T, h, _rect(0, 0, D - 2 * T, h)),
+            Panel("bottom", W, D, _rect(0, 0, W, D))]
+
+
 def build_panels(W: float, D: float, H: float, T: float, finger: float) -> list[Panel]:
     """上面が開いた箱の 5 枚の板(各板のローカル座標、左下が原点)。"""
     if T <= 0:

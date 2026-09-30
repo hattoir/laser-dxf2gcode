@@ -217,3 +217,38 @@ def test_parse_motion_kinds():
     parsed = parse_gcode(GOOD)
     kinds = [(m.kind, m.burning) for m in parsed.motions]
     assert kinds == [("G0", False), ("G0", False), ("G1", True), ("G0", False)]
+
+
+# ---------------- 冷却の待ち(G4) ----------------
+
+def test_cooldown_inserts_dwell_only_while_laser_is_off():
+    plan, g = build([rect(50, 50, 100, 100), circle(75, 75, 5)], prof=profile(passes=2), cooldown=3)
+    cmds = commands(g.text)
+    dwell_idx = [i for i, c in enumerate(cmds) if c.startswith("G4")]
+    assert len(dwell_idx) == g.burns - 1                 # 最後の発振の後は待たない
+    assert all(cmds[i] == "G4 P3" and cmds[i - 1] == "M5" for i in dwell_idx)
+    parsed = verify_gcode(g.text, machine())
+    assert sum(sec for _, sec in parsed.dwells) == 3 * (g.burns - 1)
+
+
+def test_no_dwell_by_default():
+    _, g = build([rect(50, 50, 100, 100)])
+    assert "G4" not in g.text
+
+
+@pytest.mark.parametrize("bad", [
+    GOOD.replace("M4 S500\n", "M4 S500\nG4 P2\n"),          # 発振中の待ち = 止まったまま焼く
+    GOOD.replace("M5\nG0 X0 Y0 S0\nM5\n", "M5\nG4 P500\nG0 X0 Y0 S0\nM5\n"),   # 長すぎる待ち
+    GOOD.replace("M5\nG0 X0 Y0 S0\nM5\n", "M5\nG4\nG0 X0 Y0 S0\nM5\n"),        # P なし
+])
+def test_verify_rejects_bad_dwell(bad):
+    with pytest.raises(GcodeSafetyError):
+        verify_gcode(bad, machine())
+
+
+def test_dwell_counts_in_time_estimate():
+    from src.preview import estimate_time
+    m = machine()
+    base = estimate_time(verify_gcode(GOOD, m), m).total_s
+    with_dwell = GOOD.replace("M5\nG0 X0 Y0 S0\nM5\n", "M5\nG4 P7\nG0 X0 Y0 S0\nM5\n")
+    assert estimate_time(verify_gcode(with_dwell, m), m).total_s == pytest.approx(base + 7)

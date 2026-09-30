@@ -164,3 +164,47 @@ def test_box_splits_across_small_sheets(tmp_path):
     assert main(["box", "--size", "100", "100", "74", "--thickness", "2.5", "-p", "mdf_2_5mm",
                  "--sheet", "220", "190", "-o", str(out)]) == 0
     assert (tmp_path / "s_1.gcode").exists() and (tmp_path / "s_2.gcode").exists()
+
+
+def _roles(text):
+    return [l.split("role=")[1].split()[0] for l in text.splitlines() if "role=" in l]
+
+
+def test_convert_mark_only_never_cuts(tmp_path):
+    src = _dxf(tmp_path / "p.dxf", [("rect", 20, 20, 80, 60), ("circle", (50, 40), 5)])
+    out = tmp_path / "p.gcode"
+    assert main(["convert", str(src), "-p", "mdf_2_5mm", "--mark-only", "-o", str(out)]) == 0
+    text = out.read_text()
+    assert set(_roles(text)) == {"mark"}
+    assert "M4 S400" in text and "M4 S1000" not in text      # score 層の 40% だけ。切断の 100% は出ない
+
+
+def test_box_butt_mark_only_is_rectangles_engraved_only(tmp_path):
+    out = tmp_path / "m.gcode"
+    assert main(["box", "--size", "100", "100", "74", "--thickness", "2.5", "-p", "mdf_2_5mm",
+                 "--joint", "butt", "--mark-only", "--gap", "0", "-o", str(out)]) == 0
+    text = out.read_text()
+    assert set(_roles(text)) == {"mark"} and "M4 S1000" not in text
+    assert len(_roles(text)) == 5                              # 長方形 5 枚
+
+
+def test_cooldown_option_adds_dwell(tmp_path):
+    src = _dxf(tmp_path / "p.dxf", [("rect", 20, 20, 80, 60)])
+    out = tmp_path / "p.gcode"
+    assert main(["convert", str(src), "-p", "mdf_2_5mm", "--cooldown", "5", "-o", str(out)]) == 0
+    assert "G4 P5" in out.read_text()
+    assert "冷却待ち" in (tmp_path / "p_report.txt").read_text(encoding="utf-8")
+
+
+def test_calibrate_ladder(tmp_path):
+    out = tmp_path / "l.gcode"
+    assert main(["calibrate", "ladder", "-p", "mdf_6mm", "--speeds", "1200,600,300", "--passes", "2,4",
+                 "--cooldown", "1", "-o", str(out)]) == 0
+    text = out.read_text()
+    feeds = {l.split("feed=")[1].split()[0] for l in text.splitlines() if "feed=" in l}
+    assert {"1200", "600", "300"} <= feeds
+    assert set(_roles(text)) == {"mark"}
+    cuts = [l for l in text.splitlines() if "role=mark" in l and "layer=c" in l]
+    assert len(cuts) == 3 * (2 + 4)                            # 各行で 2 周 + 4 周
+    assert (tmp_path / "l_frame.gcode").exists()
+    assert "エネルギー指標" in (tmp_path / "l_report.txt").read_text(encoding="utf-8")
