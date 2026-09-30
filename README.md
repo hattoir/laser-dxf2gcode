@@ -151,6 +151,23 @@ python dxf2gcode.py box --size 100 100 74 --thickness 2.5 -p mdf_2_5mm --label A
 (`src/boxgen.py` の冒頭)。テストでは 5 枚を 3D に組んで、辺と角のどの点もちょうど 1 枚だけが
 占めること(隙間も重なりもないこと)と、体積が箱の殻と一致することを確かめています。
 
+### STL しかない板状の部品を切る
+
+3D プリント用の STL しか無い部品でも、板状なら **水平に輪切りにして外形と穴を取り出せます**。
+複数の STL を渡すと 1 つの形に合体するので、プリント用に分割した板を 1 枚の板として切れます。
+
+```bash
+python dxf2gcode.py slice plate_FL.stl plate_FR.stl plate_RL.stl plate_RR.stl --z 2.5 --scale 0.5 -o plate.dxf
+```
+
+- `--z` は輪切りにする高さ(板の厚みの中ほど)。`--scale 0.5` で半分の大きさ(穴の直径も半分)
+- `--drop-holes-under splice_*.stl`: 継ぎ板の下にある穴を取り除く(1 枚板にするなら不要な穴)
+- `--add-hole X Y D`: 円い穴を追加(STL の座標・縮小前の直径)
+- 円い穴は直径を復元して CIRCLE として書き出します(STL では多角形になっているため)
+
+できた DXF は通常どおり `convert` に渡します。実例は `jobs/atn_half_scale/make.py`
+(ロボットの主板・底板を 1/2 スケールで、切断用と手切り用の両方を出力)。
+
 ### 刻印と切断を分ける
 
 切断用と刻印用を別々のスケッチとして、**同じ原点のまま** DXF に書き出し、次のように渡します。
@@ -526,6 +543,9 @@ src/
   preview.py          SVG プレビュー・加工レポート・所要時間推定
   calibrate.py        テストピース / カーフ細片 / 測定値の書き戻し
   boxgen.py           組み木の箱の板の形と材料への配置
+  stl_slice.py        STL を輪切りにして外形と穴の DXF にする
+jobs/
+  atn_half_scale/     実例: ロボットの主板・底板を 1 枚板・1/2 スケールで生成するスクリプトと DXF
 docs/
   TROUBLESHOOTING.md  切れない・FIRE で止まるときの原因と対策、検証の順番
   MANUAL_CUT.md       線だけ刻印して手で切る方法

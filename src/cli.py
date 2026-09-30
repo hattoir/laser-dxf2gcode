@@ -192,6 +192,23 @@ def cmd_box(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_slice(a: argparse.Namespace) -> int:
+    """STL を水平に輪切りにして、外形と穴の DXF を作る。"""
+    from .stl_slice import describe, slice_shape, write_dxf
+
+    shape = slice_shape(a.input, a.z, drop_holes_under=a.drop_holes_under or [],
+                        add_holes=[tuple(h) for h in (a.add_hole or [])], scale=a.scale)
+    out = Path(a.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    write_dxf(out, shape, layer=a.layer)
+    print(f"STL {len(a.input)} 個を z={a.z:g} で輪切り(倍率 {a.scale:g})")
+    for line in describe(shape):
+        print(line)
+    print(f"DXF: {out}")
+    print("次: python dxf2gcode.py convert <この DXF> -p <プロファイル> --align lower-left")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="dxf2gcode", description="Fusion 360 DXF → GRBL G-code(Creality Falcon2)")
     ap.add_argument("-m", "--machine", default=None, help="機械設定 YAML(既定: machine.yaml)")
@@ -252,6 +269,19 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--mark-layer", default="score", help="--mark-only で使う層(既定 score)")
     b.add_argument("-o", "--output", default="out/box.gcode")
     b.set_defaults(func=cmd_box)
+
+    sl = sub.add_parser("slice", help="STL を水平に輪切りにして外形と穴の DXF を作る(板状の部品用)")
+    sl.add_argument("input", nargs="+", metavar="STL",
+                    help="入力 STL(複数指定すると 1 つの形に合体する。分割された板を 1 枚にできる)")
+    sl.add_argument("--z", type=float, required=True, help="輪切りにする高さ [mm](板の厚みの中ほど)")
+    sl.add_argument("--scale", type=float, default=1.0, help="全体の倍率(既定 1。0.5 で半分の大きさ)")
+    sl.add_argument("--drop-holes-under", nargs="+", metavar="STL",
+                    help="この STL の真上/真下にある穴を取り除く(継ぎ板用の穴を消すとき)")
+    sl.add_argument("--add-hole", type=float, nargs=3, action="append", metavar=("X", "Y", "D"),
+                    help="円い穴を追加(STL の座標・縮小前の直径。複数指定可)")
+    sl.add_argument("--layer", default="0", help="書き出す DXF のレイヤー名")
+    sl.add_argument("-o", "--output", required=True, help="出力 DXF")
+    sl.set_defaults(func=cmd_slice)
 
     from .calibrate import add_calibrate_parser
     add_calibrate_parser(sub)
