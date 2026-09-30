@@ -130,3 +130,19 @@ def test_multiple_input_files_are_combined(tmp_path):
     assert roles.count("hole") > 0 and roles[-1] == "outer"
     assert all(r == "hole" for r in roles[:roles.index("outer")])
     assert "3 files" in text or "3 files" in (tmp_path / "multi_report.txt").read_text()
+
+
+def test_default_coupon_and_kerf_strip_do_not_overlap(tmp_path):
+    # 同じ端材に続けて切っても、先に抜けた穴の上を切らないこと
+    assert main(["calibrate", "coupon", "-o", str(tmp_path / "c.gcode")]) == 0
+    assert main(["calibrate", "kerf", "--count", "3", "-o", str(tmp_path / "k.gcode")]) == 0
+
+    def used(name):
+        text = (tmp_path / f"{name}_report.txt").read_text(encoding="utf-8")
+        line = next(l for l in text.splitlines() if l.startswith("材料の使用範囲"))
+        import re
+        x0, x1, y0, y1 = map(float, re.findall(r"-?\d+\.\d+", line)[:4])
+        return x0, y0, x1, y1
+
+    a, b = used("c"), used("k")
+    assert a[3] < b[1] or b[3] < a[1] or a[2] < b[0] or b[2] < a[0]

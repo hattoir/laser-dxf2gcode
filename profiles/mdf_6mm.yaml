@@ -1,0 +1,37 @@
+# 材料プロファイル: MDF 6mm(100均で購入)
+#
+# 各値の末尾コメントに【実測値】か【仮定値】かを明記する。
+# ここにある値はすべて【仮定値】(22W 機の一般的な目安)。
+# 買った板で必ずキャリブレーションしてから更新すること:
+#   python dxf2gcode.py calibrate coupon -p mdf_6mm
+#   python dxf2gcode.py calibrate kerf -p mdf_6mm --count 3
+#
+# 注意:
+#   - 6mm はダイオードレーザーには厚い部類。パス回数が多く、加工時間が長く、
+#     発火しやすい。エアアシスト必須、加工中は絶対に離れないこと
+#   - 22W 機では切り抜けない可能性もある。その場合は 2.5mm 板で進めること
+#   - 100均の板は表示と実際の厚さがずれることがある。ノギスで測って記録しておくこと
+# 実測の厚さ: 未測定
+
+mdf_6mm:
+  kerf: 0.25                 # 【仮定値】厚い板ほど切り口が V 字に広がる想定。実測して更新すること
+
+  default_layer: cut
+
+  layers:
+    cut:
+      power: 100             # 【仮定値】[%]
+      feed: 200              # 【仮定値】[mm/min]
+      passes: 6              # 【仮定値】
+      through_cut: true
+      kerf_compensation: true
+      order: 10
+      air_assist: true
+    engrave:
+      power: 30              # 【仮定値】[%]
+      feed: 3000             # 【仮定値】[mm/min]
+      passes: 1              # 【仮定値】
+      through_cut: false
+      kerf_compensation: false
+      order: 0
+      air_assist: false

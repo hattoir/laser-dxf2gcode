@@ -1,0 +1,33 @@
+# 材料プロファイル: MDF 2.5mm(100均で購入)
+#
+# 各値の末尾コメントに【実測値】か【仮定値】かを明記する。
+# ここにある値はすべて【仮定値】(22W 機・薄板の一般的な目安)。
+# 買った板で必ずキャリブレーションしてから更新すること:
+#   python dxf2gcode.py calibrate coupon -p mdf_2_5mm
+#   python dxf2gcode.py calibrate kerf -p mdf_2_5mm --count 3
+#
+# 注意: 100均の板は表示と実際の厚さがずれることがある。ノギスで測って記録しておくこと。
+# 実測の厚さ: 未測定
+
+mdf_2_5mm:
+  kerf: 0.15                 # 【仮定値】薄い板ほど切り口の広がりが小さい想定。実測して更新すること
+
+  default_layer: cut
+
+  layers:
+    cut:
+      power: 100             # 【仮定値】[%]
+      feed: 500              # 【仮定値】[mm/min] 薄板なので 5mm 用より速く
+      passes: 2              # 【仮定値】
+      through_cut: true
+      kerf_compensation: true
+      order: 10
+      air_assist: true
+    engrave:
+      power: 20              # 【仮定値】[%] 薄板は焦げやすいので 5mm 用より弱く
+      feed: 3000             # 【仮定値】[mm/min]
+      passes: 1              # 【仮定値】
+      through_cut: false
+      kerf_compensation: false
+      order: 0
+      air_assist: false

@@ -381,7 +381,8 @@ def add_calibrate_parser(sub) -> None:
     k.add_argument("--length", type=float, default=50.0)
     k.add_argument("--width", type=float, default=10.0)
     k.add_argument("--count", type=int, default=1, help="細片の本数(複数本測って平均すると精度が上がる)")
-    k.add_argument("--origin", type=float, nargs=2, default=[10.0, 10.0], metavar=("X", "Y"))
+    # テストピース(既定 Y 10〜30)と重ならない位置。同じ端材に続けて切れるようにする
+    k.add_argument("--origin", type=float, nargs=2, default=[10.0, 40.0], metavar=("X", "Y"))
     k.add_argument("-o", "--output", default="out/kerf_test.gcode")
     k.set_defaults(func=cmd_kerf)
 
