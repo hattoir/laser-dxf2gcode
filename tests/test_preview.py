@@ -30,9 +30,9 @@ def job(passes=2):
 
 def test_straight_line_time():
     m = Machine()
-    # 100mm を 600mm/min(10mm/s)、加速度 500mm/s² → 10s + v/a = 10.02s
+    # 100mm を 600mm/min(10mm/s)、加速度 1000mm/s² → 10s + v/a = 10.01s
     t = chain_time([((0, 0), (100, 0), 600)], m)
-    assert abs(t - 10.02) < 1e-6
+    assert abs(t - 10.01) < 1e-6
 
 
 def test_corners_slow_down():

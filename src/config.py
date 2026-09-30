@@ -25,8 +25,8 @@ class Machine:
     s_max: int = 1000
     max_rate_x: float = 25000.0
     max_rate_y: float = 8000.0
-    accel_x: float = 500.0
-    accel_y: float = 500.0
+    accel_x: float = 1000.0
+    accel_y: float = 1000.0
     junction_deviation: float = 0.01
     park_x: float = 0.0
     park_y: float = 0.0
