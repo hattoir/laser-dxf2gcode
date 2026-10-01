@@ -252,3 +252,15 @@ def test_dwell_counts_in_time_estimate():
     base = estimate_time(verify_gcode(GOOD, m), m).total_s
     with_dwell = GOOD.replace("M5\nG0 X0 Y0 S0\nM5\n", "M5\nG4 P7\nG0 X0 Y0 S0\nM5\n")
     assert estimate_time(verify_gcode(with_dwell, m), m).total_s == pytest.approx(base + 7)
+
+
+def test_cycle_mode_cools_down_once_per_round():
+    # 輪郭 3 つ × 4 周。cycle では 1 周を回り終えたときだけ待つ(最後の周の後は待たない)
+    plan, g = build([rect(20, 20, 120, 120), circle(50, 50, 5), circle(90, 90, 5)],
+                    prof=profile(passes=4), pass_mode="cycle", cooldown=3)
+    cmds = commands(g.text)
+    assert sum(c.startswith("G4") for c in cmds) == 4 - 1
+    # 待ちの直前は、その周の最後(外形)を切り終えた M5
+    for i, c in enumerate(cmds):
+        if c.startswith("G4"):
+            assert cmds[i - 1] == "M5"

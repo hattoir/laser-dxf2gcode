@@ -208,3 +208,20 @@ def test_calibrate_ladder(tmp_path):
     assert len(cuts) == 3 * (2 + 4)                            # 各行で 2 周 + 4 周
     assert (tmp_path / "l_frame.gcode").exists()
     assert "エネルギー指標" in (tmp_path / "l_report.txt").read_text(encoding="utf-8")
+
+
+def test_profile_pass_mode_and_cooldown_are_defaults(tmp_path):
+    # mdf_2_5mm はプロファイルで cycle + 2 秒冷却 + 6 周
+    src = _dxf(tmp_path / "p.dxf", [("rect", 20, 20, 60, 50), ("circle", (40, 35), 4)])
+    out = tmp_path / "p.gcode"
+    assert main(["convert", str(src), "-p", "mdf_2_5mm", "-o", str(out)]) == 0
+    text = out.read_text()
+    assert "pass_mode: cycle" in text and "G4 P2" in text
+    roles = _roles(text)
+    assert roles == ["hole", "outer"] * 6                    # 1 周ずつ交互に、穴が先
+    # コマンドで指定すればそちらが勝つ
+    out2 = tmp_path / "q.gcode"
+    assert main(["convert", str(src), "-p", "mdf_2_5mm", "--pass-mode", "path", "--cooldown", "0",
+                 "-o", str(out2)]) == 0
+    text2 = out2.read_text()
+    assert "G4" not in text2 and _roles(text2) == ["hole"] * 6 + ["outer"] * 6

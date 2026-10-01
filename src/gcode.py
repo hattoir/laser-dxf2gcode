@@ -169,19 +169,24 @@ def generate_gcode(plan: Plan, machine: Machine, *, pass_mode: str = "path",
         for p in plan.paths:
             for k, ps in enumerate(p.settings.pass_settings()):
                 jobs.append((p, k, ps))
-    else:
+    # cycle では「1 周を回り終えたとき」だけ待つ(1 周の間に他の輪郭を切るので、それぞれは冷めている)。
+    # round_end[i] = jobs[i] がその周の最後で、その周に切断レベルの発振があったか
+    round_end: dict[int, bool] = {}
+    if pass_mode == "cycle":
         rounds = max((p.settings.passes for p in plan.paths), default=0)
         for k in range(rounds):
+            start = len(jobs)
             for p in plan.paths:
                 settings = p.settings.pass_settings()
                 if k < len(settings):
                     jobs.append((p, k, settings[k]))
+            if len(jobs) > start:
+                round_end[len(jobs) - 1] = any(ps.power >= COOLDOWN_MIN_POWER for _, _, ps in jobs[start:])
 
     air_on = False
-    n_done = 0
     index = {id(p): i for i, p in enumerate(plan.paths)}
     warned_feed = set()
-    for p, k, ps in jobs:
+    for j, (p, k, ps) in enumerate(jobs):
         i = index[id(p)]
         where = f"(layer '{p.layer}' pass {k + 1})"
         s = power_to_s(ps.power, machine.s_max, warnings, where)
@@ -212,9 +217,9 @@ def generate_gcode(plan: Plan, machine: Machine, *, pass_mode: str = "path",
             else:
                 out.append(f"G1 X{fmt(x)} Y{fmt(y)}")
         out.append("M5")
-        n_done += 1
         # 待つのは切断レベルの出力で焼いた後だけ(刻印の 1 画ごとに待つと無駄に長くなる)
-        if cooldown > 0 and n_done < len(jobs) and ps.power >= COOLDOWN_MIN_POWER:
+        if cooldown > 0 and j < len(jobs) - 1 and (
+                round_end.get(j, False) if pass_mode == "cycle" else ps.power >= COOLDOWN_MIN_POWER):
             out.append(f"G4 P{cooldown:g}")
 
     if use_air and air_on:

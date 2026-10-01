@@ -234,13 +234,13 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--margin", type=float, default=5.0, help="--align lower-left の余白 [mm]")
     c.add_argument("--offset", type=float, nargs=2, default=[0.0, 0.0], metavar=("DX", "DY"),
                    help="全体を平行移動 [mm]")
-    c.add_argument("--pass-mode", choices=["path", "cycle"], default="path",
+    c.add_argument("--pass-mode", choices=["path", "cycle"], default=None,
                    help="path = 輪郭ごとに回数分続けて切る(既定)/ cycle = 全体を 1 周ずつ繰り返す")
     c.add_argument("--no-return-home", dest="return_home", action="store_false", help="末尾の原点復帰をしない")
     c.add_argument("--min-gap", type=float, default=0.5,
                    help="切断線どうしがこの距離 [mm] より近ければ警告(既定 0.5、0 で無効)")
-    c.add_argument("--cooldown", type=float, default=0.0,
-                   help="発振のたびにレーザー OFF で待つ秒数(熱がこもって炎が出るのを防ぐ。既定 0)")
+    c.add_argument("--cooldown", type=float, default=None,
+                   help="発振のたびにレーザー OFF で待つ秒数(熱がこもって炎が出るのを防ぐ。既定: プロファイルの cooldown)")
     c.add_argument("--mark-only", action="store_true",
                    help="切らずに、切る線を浅く刻印するだけにする(手で切るときの案内線)")
     c.add_argument("--mark-layer", default="score", help="--mark-only で使う層(既定 score)")
@@ -259,11 +259,11 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--gap", type=float, default=4.0, help="板と板の間隔 [mm]")
     b.add_argument("--margin", type=float, default=5.0, help="材料の端からの余白 [mm]")
     b.add_argument("--label", default="", help="前の板の中央に刻印する文字(英大文字・数字)")
-    b.add_argument("--pass-mode", choices=["path", "cycle"], default="path",
+    b.add_argument("--pass-mode", choices=["path", "cycle"], default=None,
                    help="cycle = 全部の板を 1 周ずつ順に回る(炎が出にくい。箱の板には穴がないので順序の問題もない)")
     b.add_argument("--joint", choices=["finger", "butt"], default="finger",
                    help="finger = 組み木(レーザーで切る用)/ butt = 突き付け(ただの長方形。手で切る用)")
-    b.add_argument("--cooldown", type=float, default=0.0, help="発振のたびにレーザー OFF で待つ秒数")
+    b.add_argument("--cooldown", type=float, default=None, help="発振のたびにレーザー OFF で待つ秒数(既定: プロファイルの cooldown)")
     b.add_argument("--mark-only", action="store_true",
                    help="切らずに、切る線を浅く刻印するだけにする(手で切るときの案内線)")
     b.add_argument("--mark-layer", default="score", help="--mark-only で使う層(既定 score)")

@@ -31,3 +31,10 @@ def test_every_value_is_labelled_measured_or_assumed(name):
         key = line.split("#")[0].strip()
         if any(key.startswith(k + ":") for k in ("kerf", "power", "feed", "passes")):
             assert "【実測値】" in line or "【仮定値】" in line, f"{name}: 注記がない行: {line}"
+
+
+def test_invalid_profile_pass_mode_is_rejected():
+    from src.config import ConfigError, profile_from_dict
+    body = {"kerf": 0.2, "pass_mode": "spiral", "layers": {"cut": {"power": 100, "feed": 500}}}
+    with pytest.raises(ConfigError):
+        profile_from_dict("x", body)

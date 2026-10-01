@@ -90,6 +90,8 @@ class Profile:
     default_layer: str | None
     layers: dict[str, LayerSettings]
     path: Path | None = None
+    pass_mode: str | None = None   # 既定の周回順("path" / "cycle")。None なら "path"
+    cooldown: float = 0.0          # 既定の冷却待ち [秒]
 
     def settings_for(self, layer_name: str) -> tuple[LayerSettings, bool]:
         """DXF のレイヤー名に対応する設定。一致しなければ default_layer (matched=False)。"""
@@ -107,6 +109,10 @@ class Profile:
             raise ConfigError(f"profile {self.name}: kerf {self.kerf} が 0〜{MAX_KERF}mm の範囲外です")
         if not self.layers:
             raise ConfigError(f"profile {self.name}: layers が空です")
+        if self.pass_mode not in (None, "path", "cycle"):
+            raise ConfigError(f"profile {self.name}: pass_mode は path か cycle にしてください")
+        if not (0.0 <= self.cooldown <= 120.0):
+            raise ConfigError(f"profile {self.name}: cooldown は 0〜120 秒にしてください")
         if self.default_layer is not None and self.default_layer not in self.layers:
             raise ConfigError(f"profile {self.name}: default_layer '{self.default_layer}' が layers にありません")
         for k, v in self.layers.items():
@@ -167,6 +173,7 @@ def profile_from_dict(name: str, body: dict, path: Path | None = None) -> Profil
         except TypeError as exc:
             raise ConfigError(f"profile {name} / layer {lname}: {exc}") from exc
     prof = Profile(name=name, kerf=float(body.get("kerf", 0.0)),
-                   default_layer=body.get("default_layer"), layers=layers, path=path)
+                   default_layer=body.get("default_layer"), layers=layers, path=path,
+                   pass_mode=body.get("pass_mode"), cooldown=float(body.get("cooldown", 0.0)))
     prof.validate()
     return prof

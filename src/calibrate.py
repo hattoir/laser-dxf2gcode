@@ -165,7 +165,8 @@ def coupon_profile(base: Profile, variants: list[Variant]) -> Profile:
               for v in variants}
     eng = base.layers.get("engrave") or LayerSettings("engrave", 30, 3000, 1, False, False, 0, False)
     layers["engrave"] = eng
-    prof = Profile(f"{base.name}-coupon", base.kerf, None, layers)
+    prof = Profile(f"{base.name}-coupon", base.kerf, None, layers,
+                   pass_mode=base.pass_mode, cooldown=base.cooldown)
     prof.validate()
     return prof
 
@@ -234,7 +235,8 @@ def cmd_kerf(a: argparse.Namespace) -> int:
     layer = LayerSettings("kerf_test", power=cut.power, feed=cut.feed, passes=cut.passes,
                           per_pass=list(cut.per_pass), through_cut=True, kerf_compensation=False,
                           air_assist=cut.air_assist)
-    prof = Profile(f"{base.name}-kerf", 0.0, None, {"kerf_test": layer})
+    prof = Profile(f"{base.name}-kerf", 0.0, None, {"kerf_test": layer},
+                   pass_mode=base.pass_mode, cooldown=base.cooldown)
     meta = {"source": dxf_path.name, "profile": f"{base.name} (kerf test, NO kerf compensation)"}
     o = process(res.contours, prof, machine, out, meta=meta, read_warnings=res.warnings,
                 title=f"kerf test {a.length:g}x{a.width:g} [{base.name}]", write_frame=True,
@@ -308,7 +310,7 @@ def cmd_ladder(a: argparse.Namespace) -> int:
     doc.saveas(dxf_path)
 
     layers["engrave"] = base.layers.get("engrave") or LayerSettings("engrave", 30, 3000, 1, False, False, 0, False)
-    prof = Profile(f"{base.name}-ladder", 0.0, None, layers)
+    prof = Profile(f"{base.name}-ladder", 0.0, None, layers, cooldown=base.cooldown)
     prof.validate()
     res = read_dxf(dxf_path)
     meta = {"source": dxf_path.name, "profile": f"{base.name} (ladder: speed x passes, power {a.power:g}%)"}
@@ -458,9 +460,9 @@ def add_calibrate_parser(sub) -> None:
     c.add_argument("--origin", type=float, nargs=2, default=[10.0, 10.0], metavar=("X", "Y"))
     c.add_argument("--size", type=float, default=20.0, help="ピースの一辺 [mm]")
     c.add_argument("--no-engrave", action="store_true", help="設定値を刻印しない")
-    c.add_argument("--pass-mode", choices=["path", "cycle"], default="path",
+    c.add_argument("--pass-mode", choices=["path", "cycle"], default=None,
                    help="cycle = 全部の輪郭を 1 周ずつ順に回る(1 周ごとに冷めるので炎が出にくい。穴のない部品向け)")
-    c.add_argument("--cooldown", type=float, default=0.0, help="発振のたびにレーザー OFF で待つ秒数")
+    c.add_argument("--cooldown", type=float, default=None, help="発振のたびにレーザー OFF で待つ秒数(既定: プロファイルの cooldown)")
     c.add_argument("-o", "--output", default="out/coupon.gcode")
     c.set_defaults(func=cmd_coupon)
 
@@ -472,9 +474,9 @@ def add_calibrate_parser(sub) -> None:
     k.add_argument("--count", type=int, default=1, help="細片の本数(複数本測って平均すると精度が上がる)")
     # テストピース(既定 Y 10〜30)と重ならない位置。同じ端材に続けて切れるようにする
     k.add_argument("--origin", type=float, nargs=2, default=[10.0, 40.0], metavar=("X", "Y"))
-    k.add_argument("--pass-mode", choices=["path", "cycle"], default="path",
+    k.add_argument("--pass-mode", choices=["path", "cycle"], default=None,
                    help="cycle = 全部の輪郭を 1 周ずつ順に回る(1 周ごとに冷めるので炎が出にくい。穴のない部品向け)")
-    k.add_argument("--cooldown", type=float, default=0.0, help="発振のたびにレーザー OFF で待つ秒数")
+    k.add_argument("--cooldown", type=float, default=None, help="発振のたびにレーザー OFF で待つ秒数(既定: プロファイルの cooldown)")
     k.add_argument("-o", "--output", default="out/kerf_test.gcode")
     k.set_defaults(func=cmd_kerf)
 
@@ -488,7 +490,7 @@ def add_calibrate_parser(sub) -> None:
     ld.add_argument("--origin", type=float, nargs=2, default=[10.0, 10.0], metavar=("X", "Y"))
     ld.add_argument("--pass-mode", choices=["path", "cycle"], default="cycle",
                     help="既定 cycle = 全部の線を 1 周ずつ順に回る(熱がこもりにくい)")
-    ld.add_argument("--cooldown", type=float, default=0.0, help="発振のたびにレーザー OFF で待つ秒数")
+    ld.add_argument("--cooldown", type=float, default=None, help="発振のたびにレーザー OFF で待つ秒数(既定: プロファイルの cooldown)")
     ld.add_argument("-o", "--output", default="out/ladder.gcode")
     ld.set_defaults(func=cmd_ladder)
 
