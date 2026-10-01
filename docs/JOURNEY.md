@@ -329,6 +329,9 @@ Fusion の API(`Sketch.saveAsDXF`)で書き出して試した。設計は変更�
   - `out/checks/paper_test.gcode`: **クラフト紙 0.2mm をメーカー公式の条件(80%・4000mm/min・1 周)で切る** 30mm 角と、
     50% の 30mm 角。公式条件で紙が切れなければ、機械の出力が落ちている疑いが強い(速いので火焔検知にも当たりにくい)
 
+- **追記(ユーザー確認)**: 8 章の試験 #8(`m3_m4.gcode`)は **2.5mm の板** で行った(表の「2.5mm(推測)」は確定)。
+  次はクラフト紙で出力確認(`paper_test.gcode`)を試す予定
+
 #### この節の出典
 
 - Creality Falcon2 S value/variable power issue(LightBurn フォーラム): https://forum.lightburnsoftware.com/t/creality-falcon2-s-value-variable-power-issue/137714
