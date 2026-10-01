@@ -329,6 +329,13 @@ Fusion の API(`Sketch.saveAsDXF`)で書き出して試した。設計は変更�
   - `out/checks/paper_test.gcode`: **クラフト紙 0.2mm をメーカー公式の条件(80%・4000mm/min・1 周)で切る** 30mm 角と、
     50% の 30mm 角。公式条件で紙が切れなければ、機械の出力が落ちている疑いが強い(速いので火焔検知にも当たりにくい)
 
+#### この節の出典
+
+- Creality Falcon2 S value/variable power issue(LightBurn フォーラム): https://forum.lightburnsoftware.com/t/creality-falcon2-s-value-variable-power-issue/137714
+- Falcon2 22W lost more than half of its power(Creality フォーラム): https://forum.creality.com/t/falcon2-22w-lost-more-than-half-of-its-power/15547
+- Cut bricht ab wegen Feuer Meldung(Creality フォーラム): https://forum.creality.com/t/cut-bricht-ab-wegen-feuer-meldung/22651
+- Creality 公式の Falcon2 切断条件(クラフト紙 0.2mm = 80% / 4000mm/min / 1 周): https://www.crealityfalcon.com/blogs/product-tutorials-and-support/creality-falcon2-laser-engraving-cutting-parameter-settings
+
 ---
 
 ## 8. 実機試験の記録
